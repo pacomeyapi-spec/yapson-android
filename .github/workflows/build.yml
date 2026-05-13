@@ -3,8 +3,6 @@ name: Build APK
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -21,49 +19,31 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.4'
+
       - name: Cache Gradle packages
         uses: actions/cache@v4
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-
-      - name: Setup Gradle wrapper
-        run: |
-          gradle wrapper --gradle-version 8.4 2>/dev/null || true
-          # Génère gradlew s'il n'existe pas
-          if [ ! -f gradlew ]; then
-            gradle wrapper --gradle-version 8.4
-          fi
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
+          restore-keys: ${{ runner.os }}-gradle-
 
       - name: Build Debug APK
-        run: ./gradlew assembleDebug --no-daemon
-
-      - name: Build Release APK (unsigned)
-        run: ./gradlew assembleRelease --no-daemon
+        run: gradle assembleDebug --no-daemon --stacktrace
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: YapsonMobile-debug
+          name: YapsonMobile-debug-v${{ github.run_number }}
           path: app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
 
-      - name: Upload Release APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: YapsonMobile-release
-          path: app/build/outputs/apk/release/app-release-unsigned.apk
-          retention-days: 30
-
       - name: Create Release
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ github.run_number }}
@@ -71,15 +51,16 @@ jobs:
           body: |
             ## Yapson Mobile Money - App Android
             
-            ### Installation
-            1. Télécharge `app-debug.apk` ci-dessous
-            2. Active "Sources inconnues" sur ton téléphone
+            ### Installation rapide
+            1. Télécharge `app-debug.apk`
+            2. Sur ton téléphone: Paramètres → Sécurité → Sources inconnues ✓
             3. Installe l'APK
-            4. Lance l'app → Config → entre l'URL backend + token
-            
-            **Backend:** https://yapson-mobile-backend-production.up.railway.app
-          files: |
-            app/build/outputs/apk/debug/app-debug.apk
+            4. Lance l'app → ⚙️ Config → entre:
+               - URL Backend: `https://yapson-mobile-backend-production.up.railway.app`
+               - Token: (depuis Admin → Appareils)
+            5. Autorise lecture notifications (pour Wave)
+            6. DÉMARRER
+          files: app/build/outputs/apk/debug/app-debug.apk
           draft: false
           prerelease: false
         env:
