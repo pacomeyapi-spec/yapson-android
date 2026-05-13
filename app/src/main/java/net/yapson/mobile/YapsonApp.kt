@@ -4,6 +4,7 @@ import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
+import net.yapson.mobile.utils.Prefs
 
 class YapsonApp : Application() {
 
@@ -15,6 +16,8 @@ class YapsonApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Initialiser Prefs EN PREMIER — avant tout le reste
+        Prefs.init(this)
         createNotificationChannel()
     }
 
