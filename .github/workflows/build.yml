@@ -26,23 +26,18 @@ jobs:
         run: |
           wget -q https://services.gradle.org/distributions/gradle-8.4-bin.zip -O /tmp/gradle.zip
           unzip -q /tmp/gradle.zip -d /opt
-          export PATH="/opt/gradle-8.4/bin:$PATH"
           echo "/opt/gradle-8.4/bin" >> $GITHUB_PATH
-          gradle --version
 
       - name: Cache Gradle
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
+          path: ~/.gradle/caches
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
 
       - name: Build Debug APK
-        run: |
-          gradle assembleDebug --no-daemon --stacktrace 2>&1 | tail -50
+        run: gradle assembleDebug --no-daemon
 
-      - name: Upload Debug APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: YapsonMobile-debug-v${{ github.run_number }}
@@ -52,20 +47,20 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ github.run_number }}
-          name: "Yapson Mobile v${{ github.run_number }}"
+          tag_name: build-${{ github.run_number }}-${{ github.sha }}
+          name: "Yapson Mobile Build ${{ github.run_number }}"
           body: |
             ## Yapson Mobile Money - App Android 📱
 
-            ### Télécharger et installer
+            ### Installation
             1. Télécharge `app-debug.apk` ci-dessous
-            2. Sur ton téléphone Android: **Paramètres → Sécurité → Installer depuis sources inconnues** ✓
+            2. Téléphone: **Paramètres → Sécurité → Sources inconnues** ✓
             3. Installe l'APK
-            4. Lance l'app → ⚙️ **Config** → remplis:
+            4. Lance l'app → ⚙️ Config:
                - **URL Backend**: `https://yapson-mobile-backend-production.up.railway.app`
-               - **Token**: depuis Admin → Appareils → copier le token
-            5. **Autoriser lecture notifications** (pour Wave)
-            6. Appuie sur **DÉMARRER** ✅
+               - **Token**: Admin → Appareils → copier le token
+            5. Autoriser notifications (pour Wave)
+            6. **DÉMARRER** ✅
           files: app/build/outputs/apk/debug/app-debug.apk
           draft: false
           prerelease: false
