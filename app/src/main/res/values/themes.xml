@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.YapsonMobile" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">#00d4aa</item>
+        <item name="colorPrimaryVariant">#00a884</item>
+        <item name="colorOnPrimary">#000000</item>
+        <item name="colorSecondary">#3b82f6</item>
+        <item name="colorSurface">#111418</item>
+        <item name="android:windowBackground">#0a0c0f</item>
+        <item name="android:statusBarColor">#0a0c0f</item>
+        <item name="android:navigationBarColor">#0a0c0f</item>
+    </style>
+</resources>

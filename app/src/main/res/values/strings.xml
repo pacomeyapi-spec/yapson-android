@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Yapson Mobile</string>
+    <string name="config_title">Configuration</string>
+    <string name="notification_listener_label">Yapson - Notifications Wave</string>
+</resources>

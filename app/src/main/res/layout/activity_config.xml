@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#0a0c0f">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="URL BACKEND"
+            android:textSize="11sp"
+            android:textColor="#556070"
+            android:letterSpacing="0.1"
+            android:layout_marginBottom="6dp"/>
+        <EditText
+            android:id="@+id/etBackendUrl"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:background="@drawable/input_bg"
+            android:textColor="#e2e8f0"
+            android:textColorHint="#556070"
+            android:hint="https://yapson-mobile-backend-production.up.railway.app"
+            android:padding="12dp"
+            android:inputType="textUri"
+            android:fontFamily="monospace"
+            android:textSize="13sp"
+            android:layout_marginBottom="16dp"/>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="TOKEN APPAREIL"
+            android:textSize="11sp"
+            android:textColor="#556070"
+            android:letterSpacing="0.1"
+            android:layout_marginBottom="6dp"/>
+        <EditText
+            android:id="@+id/etDeviceToken"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:background="@drawable/input_bg"
+            android:textColor="#e2e8f0"
+            android:textColorHint="#556070"
+            android:hint="Token fourni par la plateforme Admin"
+            android:padding="12dp"
+            android:inputType="textPassword"
+            android:fontFamily="monospace"
+            android:textSize="13sp"
+            android:layout_marginBottom="16dp"/>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="DEVICE ID (Android ID)"
+            android:textSize="11sp"
+            android:textColor="#556070"
+            android:letterSpacing="0.1"
+            android:layout_marginBottom="6dp"/>
+        <EditText
+            android:id="@+id/etDeviceId"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:background="@drawable/input_bg"
+            android:textColor="#e2e8f0"
+            android:textColorHint="#556070"
+            android:hint="Identifiant unique de cet appareil"
+            android:padding="12dp"
+            android:fontFamily="monospace"
+            android:textSize="13sp"
+            android:layout_marginBottom="16dp"/>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="PACKAGES WAVE (séparés par virgule)"
+            android:textSize="11sp"
+            android:textColor="#556070"
+            android:letterSpacing="0.1"
+            android:layout_marginBottom="6dp"/>
+        <EditText
+            android:id="@+id/etWavePackages"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:background="@drawable/input_bg"
+            android:textColor="#e2e8f0"
+            android:textColorHint="#556070"
+            android:hint="com.wave.finance,com.wave.senegal"
+            android:padding="12dp"
+            android:fontFamily="monospace"
+            android:textSize="13sp"
+            android:layout_marginBottom="16dp"/>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="INTERVALLE POLLING (secondes)"
+            android:textSize="11sp"
+            android:textColor="#556070"
+            android:letterSpacing="0.1"
+            android:layout_marginBottom="6dp"/>
+        <EditText
+            android:id="@+id/etPollInterval"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:background="@drawable/input_bg"
+            android:textColor="#e2e8f0"
+            android:textColorHint="#556070"
+            android:hint="5"
+            android:padding="12dp"
+            android:inputType="number"
+            android:fontFamily="monospace"
+            android:textSize="13sp"
+            android:layout_marginBottom="24dp"/>
+
+        <Button
+            android:id="@+id/btnSave"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:text="ENREGISTRER"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:backgroundTint="#00d4aa"
+            android:textColor="#000000"/>
+
+    </LinearLayout>
+</ScrollView>
