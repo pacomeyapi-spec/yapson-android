@@ -11,6 +11,9 @@ data class Operation(
     val amount: Double = 0.0,
     val phoneNumber: String = "",
     val ussdCode: String? = null,
+    // Étapes USSD multi-étapes (nouveau format)
+    // Liste ordonnée ex: ["*145#", "1", "0788334833", "13200", "1234", "1"]
+    val ussdSteps: List<String>? = null,
     @SerializedName("operatorConfig")
     val operatorConfig: OperatorConfig? = null
 )

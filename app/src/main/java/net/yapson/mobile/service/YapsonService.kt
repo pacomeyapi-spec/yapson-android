@@ -105,17 +105,34 @@ class YapsonService : Service() {
         Prefs.currentOperationId = taken.id
         log("▶️ Traitement: ${taken.type} ${taken.amount}F ${taken.operator} → ${taken.phoneNumber}")
 
-        // Lancer le code USSD si disponible
-        val ussd = taken.ussdCode
-        if (!ussd.isNullOrBlank()) {
-            withContext(Dispatchers.Main) {
-                log("📞 USSD: $ussd")
-                UssdHelper.dial(applicationContext, ussd)
+        // Priorité aux étapes multi-étapes (nouveau format)
+        val steps = taken.ussdSteps?.filter { it.isNotBlank() }
+
+        when {
+            // Nouveau format : étapes multiples
+            !steps.isNullOrEmpty() -> {
+                log("📞 Séquence USSD: ${steps.size} étapes")
+                withContext(Dispatchers.Main) {
+                    UssdHelper.executeSteps(
+                        ctx = applicationContext,
+                        steps = steps,
+                        onStep = { num, code -> log("📲 Étape $num/${steps.size}: $code") },
+                        onDone = { log("✅ Séquence USSD terminée") },
+                        onError = { err -> log("❌ Erreur USSD: $err") }
+                    )
+                }
             }
-            // Attendre que l'USSD se traite et que le SMS/notification arrive
-            delay(3000)
-        } else {
-            log("⚠️ Pas de code USSD pour cette opération")
+            // Ancien format : code unique
+            !taken.ussdCode.isNullOrBlank() && !taken.ussdCode.contains("|") -> {
+                withContext(Dispatchers.Main) {
+                    log("📞 USSD simple: ${taken.ussdCode}")
+                    UssdHelper.dial(applicationContext, taken.ussdCode)
+                }
+                delay(3000)
+            }
+            else -> {
+                log("⚠️ Pas de code USSD pour cette opération")
+            }
         }
     }
 
