@@ -45,6 +45,18 @@ class YapsonService : Service() {
                 return START_NOT_STICKY
             }
             else -> {
+                // CRITIQUE: configurer ApiClient avec les credentials stockés
+                // Le service tourne en background, il doit configurer lui-même ApiClient
+                Prefs.init(applicationContext)
+                if (Prefs.isConfigured()) {
+                    ApiClient.configure(Prefs.backendUrl, Prefs.deviceToken)
+                    log("🔗 API configurée: ${Prefs.backendUrl}")
+                } else {
+                    log("⚠️ Backend non configuré — allez dans Config")
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
+
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
                     startForeground(
                         YapsonApp.NOTIF_ID,
@@ -79,7 +91,7 @@ class YapsonService : Service() {
                         log("📋 Opération trouvée: ${op.type} ${op.amount}F via ${op.operator}")
                         processOperation(op)
                     } else {
-                        log("⏳ En attente...")
+                        log("⏳ En attente... (${Prefs.backendUrl.takeLast(20)})")
                     }
 
                     updateNotification(lastLog)
