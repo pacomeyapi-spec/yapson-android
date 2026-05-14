@@ -45,7 +45,15 @@ class YapsonService : Service() {
                 return START_NOT_STICKY
             }
             else -> {
-                startForeground(YapsonApp.NOTIF_ID, buildNotification("En attente d'opérations..."))
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                    startForeground(
+                        YapsonApp.NOTIF_ID,
+                        buildNotification("En attente d'opérations..."),
+                        android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                    )
+                } else {
+                    startForeground(YapsonApp.NOTIF_ID, buildNotification("En attente d'opérations..."))
+                }
                 startPolling()
             }
         }
