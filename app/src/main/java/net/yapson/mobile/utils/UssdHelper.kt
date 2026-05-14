@@ -57,15 +57,10 @@ object UssdHelper {
             return
         }
 
-        // Les étapes suivantes sont gérées par UssdAccessibilityService
-        // Notifier les étapes dans les logs
-        for (i in 1 until steps.size) {
-            onStep(i + 1, steps[i])
-        }
-
         // Démarrer le service d'accessibilité pour les étapes restantes
         UssdAccessibilityService.startSequence(
             steps = steps,
+            onStep = { num, code -> onStep(num, code) },
             onDone = {
                 Log.d(TAG, "✅ Séquence USSD complète via AccessibilityService")
                 onDone()
