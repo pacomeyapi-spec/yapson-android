@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="#CC000000"
+    android:padding="20dp">
+
+    <!-- Titre -->
+    <TextView
+        android:id="@+id/tvTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="USSD en cours"
+        android:textColor="#00d4aa"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="8dp"/>
+
+    <!-- Progression -->
+    <TextView
+        android:id="@+id/tvProgress"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Étape 2/6"
+        android:textColor="#8892a4"
+        android:textSize="12sp"
+        android:layout_marginBottom="12dp"/>
+
+    <!-- Valeur à saisir -->
+    <TextView
+        android:id="@+id/tvInstruction"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Saisir dans le menu USSD :"
+        android:textColor="#ffffff"
+        android:textSize="13sp"
+        android:layout_marginBottom="8dp"/>
+
+    <TextView
+        android:id="@+id/tvValue"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="1"
+        android:textColor="#00d4aa"
+        android:textSize="36sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:background="#1a2a1a"
+        android:padding="16dp"
+        android:layout_marginBottom="12dp"/>
+
+    <!-- Bouton copier -->
+    <Button
+        android:id="@+id/btnCopy"
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:text="📋 Copier dans le presse-papiers"
+        android:textSize="13sp"
+        android:backgroundTint="#1a3a2a"
+        android:textColor="#00d4aa"
+        android:layout_marginBottom="8dp"/>
+
+    <!-- Bouton étape suivante -->
+    <Button
+        android:id="@+id/btnNext"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:text="✅ Saisi — Étape suivante"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:backgroundTint="#00d4aa"
+        android:textColor="#000000"/>
+
+</LinearLayout>
