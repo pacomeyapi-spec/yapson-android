@@ -29,7 +29,7 @@ class UssdAccessibilityService : AccessibilityService() {
             onDone: () -> Unit,
             onErr: (String) -> Unit
         ) {
-            pendingSteps = steps.drop(1) // Étape 1 déjà faite via Intent
+            pendingSteps = steps.drop(1)
             currentStepIndex = 0
             isActive = pendingSteps.isNotEmpty()
             isProcessingStep = false
@@ -51,93 +51,108 @@ class UssdAccessibilityService : AccessibilityService() {
     }
 
     private val handler = Handler(Looper.getMainLooper())
+    private val pollRunnable = object : Runnable {
+        override fun run() {
+            if (!isActive) return
+            tryProcessNextStep()
+            // Continuer le polling toutes les 1.5 secondes
+            handler.postDelayed(this, 1500)
+        }
+    }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         serviceInfo = AccessibilityServiceInfo().apply {
-            eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
-                         AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+            // Écouter TOUS les événements de toutes les apps
+            eventTypes = AccessibilityEvent.TYPES_ALL_MASK
             feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
-            flags = AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
-            notificationTimeout = 100
+            flags = AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
+                    AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
+            notificationTimeout = 50
         }
         Log.d(TAG, "✅ Service accessibilité connecté")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (!isActive || event == null) return
+        if (!isActive || isProcessingStep) return
+        // Déclencher sur tout changement de fenêtre ou contenu
+        if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+            event?.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+            tryProcessNextStep()
+        }
+    }
+
+    /**
+     * Cherche activement un EditText dans toutes les fenêtres actives
+     * et saisit l'étape courante si trouvé.
+     */
+    private fun tryProcessNextStep() {
+        if (!isActive || isProcessingStep) return
         if (currentStepIndex >= pendingSteps.size) return
-        if (isProcessingStep) return
 
-        val pkg = event.packageName?.toString() ?: ""
+        // Chercher EditText dans la fenêtre active
+        val root = rootInActiveWindow ?: return
+        val editField = findEditText(root)
+        root.recycle()
 
-        // Logger pour debug
-        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            Log.d(TAG, "Fenêtre: pkg=$pkg")
+        if (editField == null) {
+            Log.v(TAG, "Pas de EditText trouvé — attente...")
+            return
         }
 
-        // Accepter TOUS les packages — on vérifie seulement la présence d'un EditText
-        // Le menu USSD Samsung peut apparaître dans com.android.phone, com.samsung.android.dialer, etc.
-        if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
-            event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) return
-
-        val rootNode = rootInActiveWindow ?: return
-        val editField = findEditText(rootNode)
-        rootNode.recycle()
-
-        if (editField == null) return
-
-        // Poser le verrou
         isProcessingStep = true
-
         val step = pendingSteps[currentStepIndex]
         val stepNum = currentStepIndex + 2
-        Log.d(TAG, "Saisie étape $stepNum: '$step'")
+        Log.d(TAG, "✏️ Saisie étape $stepNum: '$step'")
         onStepDone?.invoke(stepNum, step)
 
         // Saisir la valeur
-        editField.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
-
-        handler.postDelayed({
-            val root2 = rootInActiveWindow
-            val edit2 = root2?.let { findEditText(it) }
-
-            if (edit2 != null) {
-                // Vider puis saisir
+        handler.post {
+            val r = rootInActiveWindow
+            val e = r?.let { findEditText(it) }
+            if (e != null) {
+                e.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
                 val args = Bundle()
                 args.putString(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, step)
-                edit2.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                e.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                Log.d(TAG, "✅ Valeur saisie: '$step'")
 
+                // Cliquer Envoyer après 600ms
                 handler.postDelayed({
-                    // Cliquer Envoyer
-                    val root3 = rootInActiveWindow
-                    if (root3 != null) {
-                        val clicked = clickSendButton(root3)
-                        Log.d(TAG, "Bouton Envoyer cliqué: $clicked")
-                        root3.recycle()
+                    val r2 = rootInActiveWindow
+                    if (r2 != null) {
+                        val sent = clickSendButton(r2)
+                        Log.d(TAG, "Bouton Envoyer: $sent")
+                        r2.recycle()
                     }
-
                     currentStepIndex++
                     isProcessingStep = false
 
                     if (currentStepIndex >= pendingSteps.size) {
-                        Log.d(TAG, "✅ Séquence terminée")
+                        Log.d(TAG, "🎉 Toutes les étapes terminées!")
                         isActive = false
+                        stopPolling()
                         onComplete?.invoke()
                         reset()
                     }
-
-                    edit2.recycle()
-                    root2?.recycle()
-                }, 800)
+                    e.recycle()
+                    r?.recycle()
+                }, 600)
             } else {
-                Log.w(TAG, "EditText perdu — retry")
+                Log.w(TAG, "EditText perdu")
                 isProcessingStep = false
-                root2?.recycle()
+                r?.recycle()
             }
-        }, 400)
+        }
+    }
 
-        editField.recycle()
+    fun startPolling() {
+        handler.removeCallbacks(pollRunnable)
+        handler.postDelayed(pollRunnable, 2000) // Démarrer après 2s
+    }
+
+    fun stopPolling() {
+        handler.removeCallbacks(pollRunnable)
     }
 
     private fun findEditText(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
@@ -153,7 +168,6 @@ class UssdAccessibilityService : AccessibilityService() {
 
     private fun clickSendButton(root: AccessibilityNodeInfo): Boolean {
         val labels = listOf("envoyer", "send", "ok", "valider", "confirm", "suivant", "next")
-
         fun search(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
             val text = node.text?.toString()?.lowercase() ?: ""
             val desc = node.contentDescription?.toString()?.lowercase() ?: ""
@@ -169,20 +183,12 @@ class UssdAccessibilityService : AccessibilityService() {
             }
             return null
         }
-
         val btn = search(root) ?: return false
         btn.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-        Log.d(TAG, "Cliqué: '${btn.text}'")
         btn.recycle()
         return true
     }
 
-    override fun onInterrupt() {
-        isProcessingStep = false
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        reset()
-    }
+    override fun onInterrupt() { isProcessingStep = false }
+    override fun onDestroy() { super.onDestroy(); stopPolling(); reset() }
 }

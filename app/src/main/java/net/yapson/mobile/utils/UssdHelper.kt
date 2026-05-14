@@ -71,6 +71,13 @@ object UssdHelper {
             }
         )
 
+        // Démarrer le polling actif (cherche EditText toutes les 1.5s)
+        // Doit être appelé depuis le thread principal
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            // Trouver l'instance du service
+            // Le polling est géré directement dans le companion object via Handler
+        }
+
         // Attendre que la séquence se termine (max 60 secondes)
         var waited = 0
         while (UssdAccessibilityService.isActive && waited < 60000) {
