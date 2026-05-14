@@ -118,10 +118,17 @@ class YapsonService : Service() {
         log("▶️ Traitement: ${taken.type} ${taken.amount}F ${taken.operator} → ${taken.phoneNumber}")
 
         // Priorité aux étapes multi-étapes (nouveau format)
-        val steps = taken.ussdSteps?.filter { it.isNotBlank() }
+        val steps = taken.ussdSteps?.filter { it.isNotBlank() }.let { s ->
+            // Si ussdSteps est vide mais ussdCode contient des étapes séparées par |
+            if (s.isNullOrEmpty() && !taken.ussdCode.isNullOrBlank()) {
+                taken.ussdCode.split("|").filter { it.isNotBlank() }
+            } else {
+                s
+            }
+        }
 
         when {
-            // Nouveau format : étapes multiples
+            // Étapes multiples disponibles
             !steps.isNullOrEmpty() -> {
                 log("📞 Séquence USSD: ${steps.size} étapes")
                 withContext(Dispatchers.Main) {
@@ -133,14 +140,6 @@ class YapsonService : Service() {
                         onError = { err -> log("❌ Erreur USSD: $err") }
                     )
                 }
-            }
-            // Ancien format : code unique
-            !taken.ussdCode.isNullOrBlank() && !taken.ussdCode.contains("|") -> {
-                withContext(Dispatchers.Main) {
-                    log("📞 USSD simple: ${taken.ussdCode}")
-                    UssdHelper.dial(applicationContext, taken.ussdCode)
-                }
-                delay(3000)
             }
             else -> {
                 log("⚠️ Pas de code USSD pour cette opération")
