@@ -3,4 +3,5 @@
     <string name="app_name">Yapson Mobile</string>
     <string name="config_title">Configuration</string>
     <string name="notification_listener_label">Yapson - Notifications Wave</string>
+    <string name="accessibility_service_description">Yapson automatise la saisie des codes USSD pour les opérations Mobile Money</string>
 </resources>

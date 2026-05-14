@@ -56,6 +56,11 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
         }
 
+        // Bouton activation service accessibilité USSD
+        binding.btnAccessibility.setOnClickListener {
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        }
+
         // Bouton test connexion
         binding.btnTest.setOnClickListener {
             testConnection()
@@ -97,11 +102,13 @@ class MainActivity : AppCompatActivity() {
         val running = YapsonService.isRunning
         val configured = Prefs.isConfigured()
         val notifEnabled = isNotificationListenerEnabled()
+        val accessibilityEnabled = isAccessibilityServiceEnabled()
 
         binding.tvStatus.text = if (running) "🟢 ACTIF" else "🔴 INACTIF"
         binding.tvStatusDetail.text = buildString {
             appendLine("Backend: ${if (configured) Prefs.backendUrl else "Non configuré"}")
             appendLine("Notifications Wave: ${if (notifEnabled) "Autorisées ✓" else "Non autorisées ⚠️"}")
+            appendLine("USSD Auto: ${if (accessibilityEnabled) "Activé ✓" else "Non activé ⚠️"}")
             if (YapsonService.currentOperation != null) {
                 val op = YapsonService.currentOperation!!
                 appendLine("En cours: ${op.type} ${op.amount}F ${op.operator}")
@@ -109,6 +116,7 @@ class MainActivity : AppCompatActivity() {
         }
         binding.btnToggle.text = if (running) "ARRÊTER" else "DÉMARRER"
         binding.btnNotifAccess.isEnabled = !notifEnabled
+        binding.btnAccessibility.isEnabled = !accessibilityEnabled
     }
 
     private fun testConnection() {
@@ -137,6 +145,14 @@ class MainActivity : AppCompatActivity() {
     private fun isNotificationListenerEnabled(): Boolean {
         val listeners = Settings.Secure.getString(contentResolver, "enabled_notification_listeners")
         return listeners?.contains(packageName) == true
+    }
+
+    private fun isAccessibilityServiceEnabled(): Boolean {
+        val enabledServices = Settings.Secure.getString(
+            contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: return false
+        return enabledServices.contains(packageName)
     }
 
     private fun checkPermissions() {
