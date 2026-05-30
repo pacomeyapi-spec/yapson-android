@@ -114,6 +114,28 @@ object ApiClient {
         }
     }
 
+    // ─── Remonter le résultat d'une opération USSD ──────────────────
+    fun report(operationId: String, success: Boolean, finalText: String, error: String?): Boolean {
+        return try {
+            val payload = mapOf(
+                "operationId" to operationId,
+                "success" to success,
+                "finalText" to finalText,
+                "error" to (error ?: ""),
+                "reportedAt" to System.currentTimeMillis()
+            )
+            val req = Request.Builder()
+                .url("$baseUrl/api/android/report")
+                .header("x-device-token", deviceToken)
+                .post(gson.toJson(payload).toRequestBody(JSON))
+                .build()
+            client.newCall(req).execute().use { it.isSuccessful }
+        } catch (e: Exception) {
+            Log.e(TAG, "report error: ${e.message}")
+            false
+        }
+    }
+
     // ─── Heartbeat ──────────────────────────────────────────────────
     fun heartbeat(): Boolean {
         return try {

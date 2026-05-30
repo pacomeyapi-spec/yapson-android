@@ -16,7 +16,9 @@ import net.yapson.mobile.api.ApiClient
 import net.yapson.mobile.model.Operation
 import net.yapson.mobile.ui.MainActivity
 import net.yapson.mobile.utils.Prefs
-import net.yapson.mobile.utils.UssdHelper
+import net.yapson.mobile.utils.UssdRunner
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 
 class YapsonService : Service() {
 
@@ -140,24 +142,35 @@ class YapsonService : Service() {
             }
         }
 
-        when {
-            // Étapes multiples disponibles
-            !steps.isNullOrEmpty() -> {
-                log("📞 Séquence USSD: ${steps.size} étapes")
-                withContext(Dispatchers.Main) {
-                    UssdHelper.executeSteps(
-                        ctx = applicationContext,
-                        steps = steps,
-                        onStep = { num, code -> log("📲 Étape $num/${steps.size}: $code") },
-                        onDone = { log("✅ Séquence USSD terminée") },
-                        onError = { err -> log("❌ Erreur USSD: $err") }
-                    )
+        if (steps.isNullOrEmpty()) {
+            log("⚠️ Pas de code USSD pour cette opération")
+            ApiClient.report(taken.id, false, "", "Séquence USSD absente")
+            currentOperation = null
+            Prefs.currentOperationId = ""
+            return
+        }
+
+        log("📞 Séquence USSD: ${steps.size} étapes")
+        // Pilotage via le service d'accessibilité (vraie navigation du menu USSD).
+        // On attend la fin (succès / échec / timeout) avant de reprendre le poll.
+        val result = withContext(Dispatchers.Main) {
+            suspendCancellableCoroutine<UssdRunner.UssdResult> { cont ->
+                UssdRunner.runSteps(applicationContext, taken.id, steps) { r ->
+                    if (cont.isActive) cont.resume(r)
                 }
             }
-            else -> {
-                log("⚠️ Pas de code USSD pour cette opération")
-            }
         }
+
+        if (result.success) {
+            log("✅ USSD réussi")
+        } else {
+            log("❌ USSD échec: ${result.error ?: result.finalText.take(60)}")
+        }
+        // Remonter le résultat au backend (la plateforme met à jour la transaction).
+        ApiClient.report(taken.id, result.success, result.finalText, result.error)
+
+        currentOperation = null
+        Prefs.currentOperationId = ""
     }
 
     private fun log(msg: String) {
