@@ -155,7 +155,7 @@ class YapsonService : Service() {
         // On attend la fin (succès / échec / timeout) avant de reprendre le poll.
         val result = withContext(Dispatchers.Main) {
             suspendCancellableCoroutine<UssdRunner.UssdResult> { cont ->
-                UssdRunner.runSteps(applicationContext, taken.id, steps) { r ->
+                UssdRunner.runSteps(applicationContext, taken.id, steps, simSlot = taken.simSlot) { r ->
                     if (cont.isActive) cont.resume(r)
                 }
             }

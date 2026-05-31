@@ -14,6 +14,8 @@ data class Operation(
     // Étapes USSD multi-étapes (nouveau format)
     // Liste ordonnée ex: ["*145#", "1", "0788334833", "13200", "1234", "1"]
     val ussdSteps: List<String>? = null,
+    // Slot SIM choisi côté plateforme (0 = SIM1, 1 = SIM2)
+    val simSlot: Int = 0,
     @SerializedName("operatorConfig")
     val operatorConfig: OperatorConfig? = null
 )
