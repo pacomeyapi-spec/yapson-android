@@ -51,6 +51,12 @@ object UssdRunner {
     @Volatile var dialStartedAt: Long = 0L; private set
     @Volatile private var lastCtx: Context? = null
 
+    // ── Sélection SIM par slot physique (piloté via SubscriptionManager + sélecteur d'accessibilité)
+    @Volatile var desiredSimSlot: Int = -1; private set
+    @Volatile var simPickerDone: Boolean = false
+    @Volatile private var desiredSimNames: List<String> = emptyList()
+    fun simNameHints(): List<String> = desiredSimNames
+
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private const val SESSION_TIMEOUT_MS = 90_000L
     private const val WATCHDOG_TICK_MS = 2_000L
@@ -110,6 +116,9 @@ object UssdRunner {
         val s = Session(operationId, inputs, errorKeywords, onFinish)
         session = s
         lastCtx = ctx.applicationContext
+        desiredSimSlot = simSlot
+        simPickerDone = false
+        desiredSimNames = simNamesForSlot(ctx, simSlot)
         startWatchdog(s)
 
         UssdLog.clear()
@@ -174,7 +183,7 @@ object UssdRunner {
     private fun finish(s: Session, result: UssdResult) {
         if (s.finished) return
         s.finished = true
-        if (session === s) { session = null; dialStartedAt = 0L }
+        if (session === s) { session = null; dialStartedAt = 0L; desiredSimSlot = -1; simPickerDone = false; desiredSimNames = emptyList() }
         try { lastCtx?.let { notifyEnd(it, result.success, if (result.success) result.finalText else (result.error ?: result.finalText)) } } catch (_: Exception) {}
         try { s.onFinish(result) } catch (_: Exception) {}
     }
@@ -201,16 +210,71 @@ object UssdRunner {
         } catch (_: SecurityException) { false } catch (_: Exception) { false }
     }
 
+    /** Attache le bon PhoneAccountHandle correspondant au slot SIM PHYSIQUE. */
     private fun attachSimAccount(ctx: Context, intent: Intent, simSlot: Int) {
         try {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
-            val tm = ctx.getSystemService(Context.TELECOM_SERVICE) as android.telecom.TelecomManager
-            @Suppress("MissingPermission")
-            val accounts = tm.callCapablePhoneAccounts
-            if (accounts != null && accounts.size > simSlot) {
-                intent.putExtra(android.telecom.TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, accounts[simSlot])
+            val handle = phoneAccountForSlot(ctx, simSlot)
+            if (handle != null) {
+                intent.putExtra(android.telecom.TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, handle)
+                UssdLog.add("📶 SIM slot $simSlot → compte '${handle.id}'")
+            } else {
+                UssdLog.add("📶 SIM slot $simSlot : compte non résolu — le sélecteur SIM sera géré par l'accessibilité")
             }
         } catch (_: SecurityException) {} catch (_: Exception) {}
+    }
+
+    /**
+     * Mappe un slot SIM PHYSIQUE → PhoneAccountHandle.
+     * On NE se fie PLUS à l'ordre de `callCapablePhoneAccounts` (faux sur beaucoup
+     * d'appareils, dont Transsion) : on passe par le subscriptionId du slot.
+     */
+    private fun phoneAccountForSlot(ctx: Context, slot: Int): android.telecom.PhoneAccountHandle? {
+        try {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP_MR1) return null
+            val sm = ctx.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as android.telephony.SubscriptionManager
+            @Suppress("MissingPermission")
+            val info = sm.getActiveSubscriptionInfoForSimSlotIndex(slot)
+            if (info == null) { UssdLog.add("⚠️ Aucune SIM active au slot $slot"); return null }
+            val subId = info.subscriptionId
+            val tm = ctx.getSystemService(Context.TELECOM_SERVICE) as android.telecom.TelecomManager
+            @Suppress("MissingPermission")
+            val handles = tm.callCapablePhoneAccounts ?: return null
+            if (handles.isEmpty()) return null
+
+            // 1) API 30+ : correspondance fiable subscriptionId ↔ handle.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val telMgr = ctx.getSystemService(Context.TELEPHONY_SERVICE) as android.telephony.TelephonyManager
+                for (h in handles) {
+                    try {
+                        @Suppress("MissingPermission")
+                        if (telMgr.getSubscriptionId(h) == subId) return h
+                    } catch (_: Exception) {}
+                }
+            }
+            // 2) Correspondance par identifiant de handle (== subId, ou contient l'ICCID).
+            val subIdStr = subId.toString()
+            val iccId = try { info.iccId } catch (_: Exception) { null }
+            for (h in handles) {
+                val id = h.id ?: continue
+                if (id == subIdStr) return h
+                if (!iccId.isNullOrEmpty() && (id == iccId || id.contains(iccId))) return h
+            }
+            // 3) Dernier recours : index positionnel (le sélecteur d'accessibilité corrigera au besoin).
+            return handles.getOrNull(slot)
+        } catch (_: SecurityException) { return null } catch (_: Exception) { return null }
+    }
+
+    /** Libellés (nom d'affichage + opérateur) de la SIM du slot, utilisés par le sélecteur. */
+    private fun simNamesForSlot(ctx: Context, slot: Int): List<String> {
+        return try {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP_MR1) return emptyList()
+            val sm = ctx.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as android.telephony.SubscriptionManager
+            @Suppress("MissingPermission")
+            val info = sm.getActiveSubscriptionInfoForSimSlotIndex(slot) ?: return emptyList()
+            listOfNotNull(info.displayName?.toString(), info.carrierName?.toString())
+                .map { it.trim().lowercase() }.filter { it.isNotEmpty() }
+        } catch (_: Exception) { emptyList() }
     }
 
     private fun containsAny(text: String, keywords: List<String>): Boolean {

@@ -25,6 +25,12 @@ class UssdAccessibilityService : AccessibilityService() {
         @Volatile var isConnected: Boolean = false; private set
         private val SEND_LABELS = listOf("send", "envoyer", "valider", "suivant", "next", "ok", "oui", "yes", "envoi", "confirmer")
         private val DISMISS_LABELS = listOf("annuler", "cancel", "fermer", "close", "dismiss", "no", "non", "retour")
+        // Sélecteur de SIM (dual-SIM) — apparaît sur Transsion & co. quand le compte n'est pas imposé
+        private val SIM_ROW_REGEX = Regex("""sim\s*0?([12])""", RegexOption.IGNORE_CASE)
+        private val SIM_PICKER_HINTS = listOf(
+            "appeler avec", "call with", "select sim", "select a sim", "choisir une", "choisissez",
+            "sélectionner", "selectionner", "carte sim", "choose sim", "quelle sim", "which sim"
+        )
     }
 
     override fun onServiceConnected() {
@@ -50,6 +56,12 @@ class UssdAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null || !UssdRunner.isBusy()) return
+
+        // Sélecteur de SIM : priorité absolue, dès son apparition (avant tout délai/filtrage).
+        if (!UssdRunner.simPickerDone && UssdRunner.desiredSimSlot >= 0) {
+            try { for (root in collectCandidates()) if (tryProcessSimPicker(root)) return } catch (_: Exception) {}
+        }
+
         val pkg = event.packageName?.toString() ?: ""
         if (isOwnOrLauncher(pkg)) return
 
@@ -105,6 +117,7 @@ class UssdAccessibilityService : AccessibilityService() {
         }
 
         UssdLog.add("✓ Dialogue USSD — '${promptText.take(100).replace('\n', ' ')}' input=${editable != null}")
+        UssdRunner.simPickerDone = true // un vrai dialogue USSD est là : plus besoin de guetter le sélecteur SIM
         UssdRunner.onUssdDialog(promptText, editable != null) { input, submit, dismiss ->
             if (submit && input != null && editable != null) {
                 setText(editable, input)
@@ -114,6 +127,70 @@ class UssdAccessibilityService : AccessibilityService() {
             }
         }
         return true
+    }
+
+    /**
+     * Détecte le sélecteur de SIM (dual-SIM) et clique la ligne correspondant au
+     * slot voulu. Indispensable quand le système ignore EXTRA_PHONE_ACCOUNT_HANDLE
+     * et demande « Appeler avec quelle SIM ? » (fréquent sur Transsion).
+     */
+    private fun tryProcessSimPicker(root: AccessibilityNodeInfo): Boolean {
+        val pkg = root.packageName?.toString() ?: ""
+        if (pkg == packageName) return false
+        val slot = UssdRunner.desiredSimSlot
+        if (slot < 0) return false
+        // Un dialogue avec champ de saisie = dialogue USSD, surtout pas un sélecteur SIM.
+        if (findEditable(root) != null) return false
+
+        val fullText = collectText(root, null).lowercase()
+        if (fullText.isEmpty()) return false
+        val telLike = pkg.contains("telecom", true) || pkg.contains("dialer", true) || pkg.contains("phone", true)
+        val looksLikePicker = SIM_PICKER_HINTS.any { fullText.contains(it) } ||
+                (fullText.contains("sim") && SIM_ROW_REGEX.containsMatchIn(fullText) &&
+                 (fullText.contains("appel") || fullText.contains("call") || telLike))
+        if (!looksLikePicker) return false
+
+        val textNodes = ArrayList<AccessibilityNodeInfo>()
+        gatherTextNodes(root, textNodes)
+        if (textNodes.isEmpty()) return false
+
+        val names = UssdRunner.simNameHints()
+        var target: AccessibilityNodeInfo? = null
+
+        // 1) Par nom d'opérateur / d'affichage de la SIM voulue.
+        if (names.isNotEmpty()) {
+            target = textNodes.firstOrNull { n ->
+                val t = n.text?.toString()?.trim()?.lowercase() ?: return@firstOrNull false
+                names.any { it.isNotEmpty() && t.contains(it) }
+            }
+        }
+        // 2) Par libellé « SIM 1 / SIM 2 ».
+        if (target == null) {
+            target = textNodes.firstOrNull { n ->
+                val m = SIM_ROW_REGEX.find(n.text?.toString() ?: "")
+                (m?.groupValues?.getOrNull(1)?.toIntOrNull()?.minus(1)) == slot
+            }
+        }
+        // 3) Repli : n-ième ligne « SIM … » dans l'ordre d'affichage.
+        if (target == null) {
+            val simRows = textNodes.filter { SIM_ROW_REGEX.containsMatchIn(it.text?.toString() ?: "") }
+            target = simRows.getOrNull(slot)
+        }
+        if (target == null) {
+            UssdLog.add("🔎 Sélecteur SIM détecté mais ligne du slot $slot introuvable")
+            return false
+        }
+
+        UssdLog.add("📲 Sélecteur SIM → clic '${target.text}' (slot $slot)")
+        clickNode(target)
+        UssdRunner.simPickerDone = true
+        return true
+    }
+
+    private fun gatherTextNodes(node: AccessibilityNodeInfo?, out: MutableList<AccessibilityNodeInfo>) {
+        if (node == null) return
+        if (!node.text.isNullOrBlank()) out.add(node)
+        for (i in 0 until node.childCount) gatherTextNodes(node.getChild(i), out)
     }
 
     private fun collectText(node: AccessibilityNodeInfo?, editable: AccessibilityNodeInfo?): String {
