@@ -115,13 +115,14 @@ object ApiClient {
     }
 
     // ─── Remonter le résultat d'une opération USSD ──────────────────
-    fun report(operationId: String, success: Boolean, finalText: String, error: String?): Boolean {
+    fun report(operationId: String, success: Boolean, finalText: String, error: String?, operatorRef: String? = null): Boolean {
         return try {
             val payload = mapOf(
                 "operationId" to operationId,
                 "success" to success,
                 "finalText" to finalText,
                 "error" to (error ?: ""),
+                "operatorRef" to (operatorRef ?: ""),
                 "reportedAt" to System.currentTimeMillis()
             )
             val req = Request.Builder()

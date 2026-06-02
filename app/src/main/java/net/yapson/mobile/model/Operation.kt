@@ -16,6 +16,12 @@ data class Operation(
     val ussdSteps: List<String>? = null,
     // Slot SIM choisi côté plateforme (0 = SIM1, 1 = SIM2)
     val simSlot: Int = 0,
+    // Canal d'exécution : "USSD" (défaut) ou "APP" (Wave Business / Orange Max it)
+    val channel: String = "USSD",
+    // Nom du destinataire (canal APP, obligatoire pour Wave)
+    val recipientName: String? = null,
+    // Code à saisir (canal APP) — fourni par le serveur depuis le pin SIM
+    val code: String? = null,
     @SerializedName("operatorConfig")
     val operatorConfig: OperatorConfig? = null
 )

@@ -132,6 +132,17 @@ class YapsonService : Service() {
         Prefs.currentOperationId = taken.id
         log("▶️ Traitement: ${taken.type} ${taken.amount}F ${taken.operator} → ${taken.phoneNumber}")
 
+        // ── Canal APP (Wave Business / Orange Max it via accessibilité) ──
+        if (taken.channel.equals("APP", ignoreCase = true)) {
+            log("📱 Canal APP (${taken.operator})")
+            val res = AppRunner.run(taken)
+            if (res.success) log("✅ APP réussi") else log("❌ APP échec: ${res.message}")
+            ApiClient.report(taken.id, res.success, res.message ?: "", if (res.success) null else res.message, res.ref)
+            currentOperation = null
+            Prefs.currentOperationId = ""
+            return
+        }
+
         // Priorité aux étapes multi-étapes (nouveau format)
         val steps = taken.ussdSteps?.filter { it.isNotBlank() }.let { s ->
             // Si ussdSteps est vide mais ussdCode contient des étapes séparées par |

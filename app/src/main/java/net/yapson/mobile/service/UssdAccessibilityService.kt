@@ -2,8 +2,13 @@ package net.yapson.mobile.service
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import net.yapson.mobile.utils.UssdLog
@@ -23,6 +28,7 @@ class UssdAccessibilityService : AccessibilityService() {
 
     companion object {
         @Volatile var isConnected: Boolean = false; private set
+        @Volatile var instance: UssdAccessibilityService? = null   // accès impératif pour le moteur App
         private val SEND_LABELS = listOf("send", "envoyer", "valider", "suivant", "next", "ok", "oui", "yes", "envoi", "confirmer")
         private val DISMISS_LABELS = listOf("annuler", "cancel", "fermer", "close", "dismiss", "no", "non", "retour")
         // Sélecteur de SIM (dual-SIM) — apparaît sur Transsion & co. quand le compte n'est pas imposé
@@ -43,11 +49,13 @@ class UssdAccessibilityService : AccessibilityService() {
             notificationTimeout = 50
         }
         isConnected = true
+        instance = this
         UssdLog.add("✅ Service d'accessibilité CONNECTÉ")
     }
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
         isConnected = false
+        instance = null
         UssdLog.add("⛔ Service d'accessibilité DÉCONNECTÉ")
         return super.onUnbind(intent)
     }
@@ -260,5 +268,144 @@ class UssdAccessibilityService : AccessibilityService() {
         node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, Bundle().apply {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
         })
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  Primitives IMPÉRATIVES pour le moteur App (Wave Business / Orange Max it).
+    //  Indépendantes du flux USSD événementiel ci-dessus. Appelées depuis un
+    //  thread de fond par AppRunner. Tout passe par le TEXTE des nœuds.
+    // ════════════════════════════════════════════════════════════════════
+
+    private fun norm(s: String): String = s
+        .replace('\u2019', '\'').replace('\u02BC', '\'').replace('\u0060', '\'').replace('\u00B4', '\'').trim()
+
+    private fun nodeMatches(node: AccessibilityNodeInfo, needle: String, exact: Boolean): Boolean {
+        val n = norm(needle)
+        fun cmp(s: String?): Boolean {
+            if (s == null) return false
+            val v = norm(s)
+            return if (exact) v.equals(n, true) else v.contains(n, true)
+        }
+        return cmp(node.text?.toString()) || cmp(node.contentDescription?.toString())
+    }
+
+    private fun searchText(node: AccessibilityNodeInfo, needle: String, exact: Boolean, acc: MutableList<AccessibilityNodeInfo>) {
+        if (nodeMatches(node, needle, exact)) acc.add(node)
+        for (i in 0 until node.childCount) node.getChild(i)?.let { searchText(it, needle, exact, acc) }
+    }
+
+    fun findByText(needle: String, exact: Boolean = false): AccessibilityNodeInfo? {
+        for (r in collectCandidates()) {
+            val acc = ArrayList<AccessibilityNodeInfo>()
+            searchText(r, needle, exact, acc)
+            if (acc.isNotEmpty()) return acc.first()
+        }
+        return null
+    }
+
+    fun appWaitForText(needle: String, timeoutMs: Long = 12000, exact: Boolean = false): AccessibilityNodeInfo? {
+        val end = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < end) {
+            findByText(needle, exact)?.let { return it }
+            Thread.sleep(350)
+        }
+        UssdLog.add("⏱️ timeout en attendant: \"$needle\"")
+        return null
+    }
+
+    fun appClickText(needle: String, exact: Boolean = false): Boolean {
+        val n = findByText(needle, exact) ?: return false
+        clickNode(n)
+        UssdLog.add("👆 clic \"$needle\" -> true")
+        return true
+    }
+
+    private fun firstEditable(): AccessibilityNodeInfo? {
+        for (r in collectCandidates()) findEditable(r)?.let { return it }
+        return null
+    }
+
+    fun appFocusAndSet(value: String): Boolean {
+        val f = firstEditable() ?: return false
+        clickNode(f); Thread.sleep(350)
+        val n = firstEditable() ?: return false
+        setText(n, value)
+        UssdLog.add("⌨️ setText \"$value\"")
+        return true
+    }
+
+    /** Montant via presse-papier : déclenche les watchers (calcul + activation bouton). */
+    fun appEnterAmount(value: String): Boolean {
+        val f = firstEditable() ?: return false
+        clickNode(f); Thread.sleep(300)
+        setText(f, ""); Thread.sleep(150)
+        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        Handler(Looper.getMainLooper()).post { cm.setPrimaryClip(ClipData.newPlainText("amt", value)) }
+        Thread.sleep(300)
+        val n = firstEditable()
+        if (n != null) {
+            n.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+            val ok = n.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+            UssdLog.add("📋 paste montant \"$value\" -> $ok"); Thread.sleep(900)
+            if (ok) return true
+        }
+        return appFocusAndSet(value)
+    }
+
+    private fun findDigitButton(digit: String): AccessibilityNodeInfo? {
+        for (r in collectCandidates()) {
+            val acc = ArrayList<AccessibilityNodeInfo>()
+            searchText(r, digit, true, acc)
+            acc.firstOrNull { it.isClickable || it.parent?.isClickable == true }?.let { return it }
+            if (acc.isNotEmpty()) return acc.first()
+        }
+        return null
+    }
+
+    /** Tape une suite de chiffres en cliquant le bouton dont le texte vaut le chiffre (clavier mélangé Orange). */
+    fun appTapDigits(digits: String, perDigitDelay: Long = 250): Boolean {
+        for (ch in digits) {
+            val t = findDigitButton(ch.toString())
+            if (t == null) { UssdLog.add("❌ chiffre introuvable: $ch"); return false }
+            clickNode(t); Thread.sleep(perDigitDelay)
+        }
+        return true
+    }
+
+    fun appClickWhenReady(needle: String, exact: Boolean = false, attempts: Int = 6, delay: Long = 800): Boolean {
+        repeat(attempts) {
+            if (appClickText(needle, exact)) return true
+            Thread.sleep(delay)
+        }
+        return false
+    }
+
+    fun appReachHome(marker: String, attempts: Int = 4): Boolean {
+        repeat(attempts) {
+            if (findByText(marker) != null) return true
+            Thread.sleep(1500)
+            if (findByText(marker) != null) return true
+            performGlobalAction(GLOBAL_ACTION_BACK); Thread.sleep(1200)
+        }
+        return findByText(marker) != null
+    }
+
+    fun appAllTexts(): List<String> {
+        val out = ArrayList<String>()
+        fun walk(n: AccessibilityNodeInfo?) {
+            if (n == null) return
+            n.text?.toString()?.let { if (it.isNotBlank()) out.add(it) }
+            for (i in 0 until n.childCount) walk(n.getChild(i))
+        }
+        for (r in collectCandidates()) walk(r)
+        return out
+    }
+
+    fun appLaunch(pkg: String): Boolean {
+        val intent = packageManager.getLaunchIntentForPackage(pkg) ?: return false
+        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        startActivity(intent)
+        UssdLog.add("🚀 lancement $pkg")
+        return true
     }
 }
