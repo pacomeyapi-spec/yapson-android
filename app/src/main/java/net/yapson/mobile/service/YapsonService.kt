@@ -180,33 +180,8 @@ class YapsonService : Service() {
         // Remonter le résultat au backend (la plateforme met à jour la transaction).
         ApiClient.report(taken.id, result.success, result.finalText, result.error)
 
-        // Fenêtre de grâce : le SMS de confirmation +454 (Orange) et la notification
-        // Wave arrivent quelques secondes APRÈS la fin → on garde l'id rattachable.
-        Prefs.markOperationDone(taken.id)
         currentOperation = null
-
-        // Orange terminé → ramener l'app Maxit à sa page d'accueil (page de départ).
-        if (taken.operator.equals("ORANGE", ignoreCase = true)) {
-            returnMaxitHome()
-        }
-    }
-
-    /** Relance l'app Maxit sur sa page d'accueil (après une opération Orange). */
-    private fun returnMaxitHome() {
-        val pkg = Prefs.maxitPackage.trim()
-        if (pkg.isBlank()) return
-        try {
-            val intent = packageManager.getLaunchIntentForPackage(pkg)
-            if (intent != null) {
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-                startActivity(intent)
-                log("🏠 Maxit ramené à l'accueil")
-            } else {
-                log("⚠️ Maxit introuvable (package: $pkg) — vérifie le nom du package dans Config")
-            }
-        } catch (e: Exception) {
-            log("⚠️ Retour Maxit échoué: ${e.message}")
-        }
+        Prefs.currentOperationId = ""
     }
 
     private fun log(msg: String) {

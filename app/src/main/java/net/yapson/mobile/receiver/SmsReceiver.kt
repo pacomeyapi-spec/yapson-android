@@ -34,7 +34,7 @@ class SmsReceiver : BroadcastReceiver() {
 
             // Envoyer au backend
             CoroutineScope(Dispatchers.IO).launch {
-                val opId = Prefs.attributableOperationId()
+                val opId = Prefs.currentOperationId.ifBlank { null }
                 val success = ApiClient.sendSms(opId, fullMessage, senderStr)
                 Log.d(TAG, "SMS envoyé backend: $success")
             }
