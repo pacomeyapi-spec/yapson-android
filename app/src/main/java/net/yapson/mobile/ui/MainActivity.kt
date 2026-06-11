@@ -1,6 +1,7 @@
 package net.yapson.mobile.ui
 
 import android.Manifest
+import android.app.role.RoleManager
 import android.content.*
 import android.content.pm.PackageManager
 import android.os.Build
@@ -36,6 +37,7 @@ class MainActivity : AppCompatActivity() {
 
         setupUI()
         checkPermissions()
+        requestCallScreeningRole()
         refreshStatus()
     }
 
@@ -109,6 +111,7 @@ class MainActivity : AppCompatActivity() {
             appendLine("Backend: ${if (configured) Prefs.backendUrl else "Non configuré"}")
             appendLine("Notifications Wave: ${if (notifEnabled) "Autorisées ✓" else "Non autorisées ⚠️"}")
             appendLine("USSD Auto: ${if (accessibilityEnabled) "Activé ✓" else "Non activé ⚠️"}")
+            appendLine("Rejet appels: ${if (isCallScreeningHeld()) "Actif ✓" else "Non activé ⚠️ (rouvrir l'app pour autoriser)"}")
             if (YapsonService.currentOperation != null) {
                 val op = YapsonService.currentOperation!!
                 appendLine("En cours: ${op.type} ${op.amount}F ${op.operator}")
@@ -153,6 +156,27 @@ class MainActivity : AppCompatActivity() {
             Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
         ) ?: return false
         return enabledServices.contains(packageName)
+    }
+
+    /** Demande le rôle "filtrage d'appels" (Android 10+) pour pouvoir rejeter les appels entrants. */
+    private fun requestCallScreeningRole() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        if (!Prefs.rejectCalls) return
+        val rm = getSystemService(RoleManager::class.java) ?: return
+        try {
+            if (rm.isRoleAvailable(RoleManager.ROLE_CALL_SCREENING) && !rm.isRoleHeld(RoleManager.ROLE_CALL_SCREENING)) {
+                startActivityForResult(rm.createRequestRoleIntent(RoleManager.ROLE_CALL_SCREENING), 200)
+            }
+        } catch (e: Exception) {
+            addLog("⚠️ Filtrage d'appels indisponible: ${e.message}")
+        }
+    }
+
+    private fun isCallScreeningHeld(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
+        return try {
+            getSystemService(RoleManager::class.java)?.isRoleHeld(RoleManager.ROLE_CALL_SCREENING) == true
+        } catch (e: Exception) { false }
     }
 
     private fun checkPermissions() {

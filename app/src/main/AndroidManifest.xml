@@ -16,6 +16,7 @@
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
     <uses-permission android:name="android.permission.READ_PHONE_STATE"/>
+    <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS"/>
 
     <uses-feature android:name="android.hardware.telephony" android:required="false"/>
 
@@ -92,6 +93,15 @@
             <service
             android:name=".service.UssdOverlayService"
             android:exported="false"/>
+
+        <service
+            android:name=".service.CallRejectService"
+            android:exported="true"
+            android:permission="android.permission.BIND_SCREENING_SERVICE">
+            <intent-filter>
+                <action android:name="android.telecom.CallScreeningService"/>
+            </intent-filter>
+        </service>
 
     </application>
 </manifest>

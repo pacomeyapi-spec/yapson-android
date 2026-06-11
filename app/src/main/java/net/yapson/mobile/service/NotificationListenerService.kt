@@ -31,7 +31,7 @@ class NotificationListenerService : NotificationListenerService() {
 
         // Envoyer au backend
         scope.launch {
-            val opId = Prefs.currentOperationId.ifBlank { null }
+            val opId = Prefs.attributableOperationId()
             val success = ApiClient.sendNotification(opId, pkg, title, text)
             Log.d(TAG, "Notif envoyée: $success")
         }
