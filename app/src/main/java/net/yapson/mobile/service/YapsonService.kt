@@ -204,7 +204,10 @@ class YapsonService : Service() {
      * NTFY est envoyé sur tout échec, avec la raison tirée du SMS +454.
      */
     private suspend fun runAutoDepot(cfg: AutoConfig) {
-        val latest = SmsReader.lastFrom(applicationContext, "454")
+        // SIM choisie dans le dashboard : on lit le solde UNIQUEMENT sur cette SIM (subscriptionId),
+        // sinon avec deux SIM du même opérateur on lirait le solde du mauvais compte.
+        val subId = SmsReader.subIdForSlot(applicationContext, cfg.simSlot)
+        val latest = SmsReader.lastFrom(applicationContext, "454", subId)
         val tsBefore = latest?.ts ?: 0L
 
         val amount: Int
@@ -239,7 +242,7 @@ class YapsonService : Service() {
         val op = ApiClient.createAutoDepot(amount)
         if (op == null || op.ussdSteps.isNullOrEmpty()) {
             log("❌ Auto-dépôt: création opération échouée")
-            Ntfy.push(cfg.ntfyTopic, "Yapson auto-depot ECHEC", "Création du dépôt ${amount}F échouée (modèle ${cfg.operator} ? SIM ?)")
+            Ntfy.push(cfg.ntfyTopic, "Yapson auto-depot ECHEC", "Création du dépôt ${amount}F échouée (modèle USSD ? SIM ?)")
             return
         }
         Prefs.currentOperationId = op.id
@@ -262,7 +265,7 @@ class YapsonService : Service() {
         var confirm: SmsReader.Sms? = null
         val deadline = System.currentTimeMillis() + 90_000L
         while (System.currentTimeMillis() < deadline) {
-            val s = SmsReader.lastFrom(applicationContext, "454")
+            val s = SmsReader.lastFrom(applicationContext, "454", subId)
             if (s != null && s.ts > tsBefore) { confirm = s; break }
             delay(3000)
         }

@@ -3,7 +3,7 @@ package net.yapson.mobile.model
 /** Réglages d'auto-dépôt renvoyés par GET /api/android/auto-config. */
 data class AutoConfig(
     val enabled: Boolean = false,
-    val operator: String = "OMTRANS",
+    val simSlot: Int = 0,
     val destination: String = "",
     val intervalSec: Int = 60,
     val minAmount: Int = 10,

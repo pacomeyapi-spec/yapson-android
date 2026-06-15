@@ -1,18 +1,26 @@
 package net.yapson.mobile.utils
 
 import android.content.Context
+import android.os.Build
 import android.provider.Telephony
 
 /** Lecture de la boîte SMS pour récupérer le solde du dernier message +454. */
 object SmsReader {
     data class Sms(val body: String, val ts: Long)
 
-    /** Dernier SMS reçu d'un expéditeur dont l'adresse contient [senderContains] (ex "454"). */
-    fun lastFrom(ctx: Context, senderContains: String): Sms? {
+    /**
+     * Dernier SMS reçu d'un expéditeur dont l'adresse contient [senderContains] (ex "454").
+     * Si [subId] >= 0, on ne lit QUE les SMS reçus sur cette SIM (subscriptionId) — indispensable
+     * quand l'appareil a deux SIM du même opérateur (deux comptes, deux soldes distincts).
+     */
+    fun lastFrom(ctx: Context, senderContains: String, subId: Int = -1): Sms? {
         return try {
             val cols = arrayOf(Telephony.Sms.ADDRESS, Telephony.Sms.BODY, Telephony.Sms.DATE)
+            val sel: String?; val args: Array<String>?
+            if (subId >= 0) { sel = Telephony.Sms.SUBSCRIPTION_ID + "=?"; args = arrayOf(subId.toString()) }
+            else { sel = null; args = null }
             ctx.contentResolver.query(
-                Telephony.Sms.Inbox.CONTENT_URI, cols, null, null, Telephony.Sms.DATE + " DESC"
+                Telephony.Sms.Inbox.CONTENT_URI, cols, sel, args, Telephony.Sms.DATE + " DESC"
             )?.use { c ->
                 val iA = c.getColumnIndex(Telephony.Sms.ADDRESS)
                 val iB = c.getColumnIndex(Telephony.Sms.BODY)
@@ -24,6 +32,17 @@ object SmsReader {
             }
             null
         } catch (e: Exception) { null }
+    }
+
+    /** subscriptionId de la SIM au slot physique [slot] (-1 si indisponible). */
+    fun subIdForSlot(ctx: Context, slot: Int): Int {
+        return try {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP_MR1) return -1
+            val sm = ctx.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as android.telephony.SubscriptionManager
+            @Suppress("MissingPermission")
+            val info = sm.getActiveSubscriptionInfoForSimSlotIndex(slot) ?: return -1
+            info.subscriptionId
+        } catch (e: Exception) { -1 }
     }
 
     /**
