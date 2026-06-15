@@ -14,9 +14,12 @@ import net.yapson.mobile.R
 import net.yapson.mobile.YapsonApp
 import net.yapson.mobile.api.ApiClient
 import net.yapson.mobile.model.Operation
+import net.yapson.mobile.model.AutoConfig
 import net.yapson.mobile.ui.MainActivity
 import net.yapson.mobile.utils.Prefs
 import net.yapson.mobile.utils.UssdRunner
+import net.yapson.mobile.utils.SmsReader
+import net.yapson.mobile.utils.Ntfy
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
@@ -97,6 +100,16 @@ class YapsonService : Service() {
                     // Heartbeat toutes les 60s
                     if (heartbeatCounter++ % (60 / Prefs.pollInterval) == 0) {
                         ApiClient.heartbeat()
+                    }
+
+                    // Mode auto-dépôt : si activé côté dashboard, l'appareil dépose tout seul
+                    // le solde lu dans le dernier SMS +454, en boucle (pas de poll d'opérations).
+                    val auto = ApiClient.getAutoConfig()
+                    if (auto != null && auto.enabled) {
+                        runAutoDepot(auto)
+                        updateNotification(lastLog)
+                        delay(auto.intervalSec.coerceAtLeast(15) * 1000L)
+                        continue
                     }
 
                     // Chercher une opération PENDING
@@ -182,6 +195,90 @@ class YapsonService : Service() {
 
         currentOperation = null
         Prefs.currentOperationId = ""
+    }
+
+    /**
+     * Un cycle d'auto-dépôt :
+     *  - 1er lancement : dépôt sonde (probeAmount, ex 200 F) pour révéler le solde ;
+     *  - ensuite : lit le solde du dernier SMS +454 et dépose tout (multiple de 10 F).
+     * NTFY est envoyé sur tout échec, avec la raison tirée du SMS +454.
+     */
+    private suspend fun runAutoDepot(cfg: AutoConfig) {
+        val latest = SmsReader.lastFrom(applicationContext, "454")
+        val tsBefore = latest?.ts ?: 0L
+
+        val amount: Int
+        val isProbe: Boolean
+        if (!Prefs.autoProbeDone) {
+            amount = (cfg.probeAmount.coerceAtLeast(10) / 10) * 10
+            isProbe = true
+            log("⚡ Auto-dépôt: sonde initiale ${amount}F → ${cfg.destination}")
+        } else {
+            if (latest == null) { log("⏳ Auto-dépôt: aucun SMS +454"); return }
+            if (latest.ts <= Prefs.autoLastSmsTs) { log("⏳ Auto-dépôt: pas de nouveau SMS +454"); return }
+            val bal = SmsReader.parseSolde(latest.body)
+            if (bal == null) {
+                log("⚠️ Auto-dépôt: solde illisible")
+                Ntfy.push(cfg.ntfyTopic, "Yapson auto-depot", "Solde illisible dans le SMS +454: ${latest.body.take(120)}")
+                Prefs.autoLastSmsTs = latest.ts
+                return
+            }
+            var a = ((bal / 10) * 10).toInt()
+            if (cfg.maxAmount > 0) a = minOf(a, (cfg.maxAmount / 10) * 10)
+            if (a < cfg.minAmount || a < 10) {
+                log("⏳ Auto-dépôt: solde $bal → rien à déposer (min ${cfg.minAmount})")
+                Prefs.autoLastSmsTs = latest.ts
+                return
+            }
+            amount = a
+            isProbe = false
+            log("⚡ Auto-dépôt: solde $bal → dépôt ${amount}F → ${cfg.destination}")
+            Prefs.autoLastSmsTs = latest.ts // marque ce SMS comme traité (anti double-dépôt)
+        }
+
+        val op = ApiClient.createAutoDepot(amount)
+        if (op == null || op.ussdSteps.isNullOrEmpty()) {
+            log("❌ Auto-dépôt: création opération échouée")
+            Ntfy.push(cfg.ntfyTopic, "Yapson auto-depot ECHEC", "Création du dépôt ${amount}F échouée (modèle ${cfg.operator} ? SIM ?)")
+            return
+        }
+        Prefs.currentOperationId = op.id
+        val result = withContext(Dispatchers.Main) {
+            suspendCancellableCoroutine<UssdRunner.UssdResult> { cont ->
+                UssdRunner.runSteps(applicationContext, op.id, op.ussdSteps!!, simSlot = op.simSlot) { r ->
+                    if (cont.isActive) cont.resume(r)
+                }
+            }
+        }
+        ApiClient.report(op.id, result.success, result.finalText, result.error)
+        Prefs.currentOperationId = ""
+        if (!result.success) {
+            log("❌ Auto-dépôt: USSD échec ${result.error}")
+            Ntfy.push(cfg.ntfyTopic, "Yapson auto-depot ECHEC", "USSD ${amount}F: ${result.error ?: result.finalText.take(100)}")
+            return
+        }
+
+        // Attendre le SMS +454 de confirmation (succès/échec + nouveau solde)
+        var confirm: SmsReader.Sms? = null
+        val deadline = System.currentTimeMillis() + 90_000L
+        while (System.currentTimeMillis() < deadline) {
+            val s = SmsReader.lastFrom(applicationContext, "454")
+            if (s != null && s.ts > tsBefore) { confirm = s; break }
+            delay(3000)
+        }
+        if (confirm == null) {
+            log("⚠️ Auto-dépôt: pas de SMS +454 de confirmation (timeout)")
+            Ntfy.push(cfg.ntfyTopic, "Yapson auto-depot", "Dépôt ${amount}F: aucun SMS +454 reçu (timeout 90s)")
+            return
+        }
+        if (SmsReader.isSuccess(confirm.body)) {
+            log("✅ Auto-dépôt: ${amount}F confirmé")
+            if (isProbe) { Prefs.autoProbeDone = true; Prefs.autoLastSmsTs = tsBefore } // la confirmation (plus récente) sera balayée au prochain cycle
+        } else {
+            log("❌ Auto-dépôt: échec — ${confirm.body.take(80)}")
+            Ntfy.push(cfg.ntfyTopic, "Yapson auto-depot ECHEC", confirm.body) // raison reçue par SMS
+            Prefs.autoLastSmsTs = confirm.ts
+        }
     }
 
     private fun log(msg: String) {

@@ -137,6 +137,36 @@ object ApiClient {
         }
     }
 
+    // ─── Auto-dépôt : lire la config ────────────────────────────────
+    fun getAutoConfig(): net.yapson.mobile.model.AutoConfig? {
+        return try {
+            val req = Request.Builder()
+                .url("$baseUrl/api/android/auto-config")
+                .header("x-device-token", deviceToken)
+                .get().build()
+            val resp = client.newCall(req).execute()
+            if (!resp.isSuccessful) return null
+            val body = resp.body?.string() ?: return null
+            gson.fromJson(body, net.yapson.mobile.model.AutoConfig::class.java)
+        } catch (e: Exception) { Log.e(TAG, "autoConfig err: ${e.message}"); null }
+    }
+
+    // ─── Auto-dépôt : créer une opération de dépôt côté serveur ──────
+    fun createAutoDepot(amount: Int): Operation? {
+        return try {
+            val payload = mapOf("amount" to amount)
+            val req = Request.Builder()
+                .url("$baseUrl/api/android/auto-depot")
+                .header("x-device-token", deviceToken)
+                .post(gson.toJson(payload).toRequestBody(JSON))
+                .build()
+            val resp = client.newCall(req).execute()
+            if (!resp.isSuccessful) { Log.e(TAG, "autoDepot http ${resp.code}"); return null }
+            val body = resp.body?.string() ?: return null
+            gson.fromJson(body, Operation::class.java)
+        } catch (e: Exception) { Log.e(TAG, "autoDepot err: ${e.message}"); null }
+    }
+
     // ─── Heartbeat ──────────────────────────────────────────────────
     fun heartbeat(): Boolean {
         return try {

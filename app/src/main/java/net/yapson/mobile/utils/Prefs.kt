@@ -44,6 +44,16 @@ object Prefs {
         get() = _ctx?.let { prefs(it).getString("current_op_id", "") } ?: ""
         set(v) { _ctx?.let { prefs(it).edit().putString("current_op_id", v).apply() } }
 
+    // Auto-dépôt : la sonde initiale (200 F) a-t-elle réussi ?
+    var autoProbeDone: Boolean
+        get() = _ctx?.let { prefs(it).getBoolean("auto_probe_done", false) } ?: false
+        set(v) { _ctx?.let { prefs(it).edit().putBoolean("auto_probe_done", v).apply() } }
+
+    // Auto-dépôt : horodatage du dernier SMS +454 déjà traité (anti double-dépôt)
+    var autoLastSmsTs: Long
+        get() = _ctx?.let { prefs(it).getLong("auto_last_sms_ts", 0L) } ?: 0L
+        set(v) { _ctx?.let { prefs(it).edit().putLong("auto_last_sms_ts", v).apply() } }
+
     private var _ctx: Context? = null
     fun init(ctx: Context) { _ctx = ctx.applicationContext }
 

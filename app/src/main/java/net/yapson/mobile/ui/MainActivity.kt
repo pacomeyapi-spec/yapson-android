@@ -36,6 +36,7 @@ class MainActivity : AppCompatActivity() {
 
         setupUI()
         checkPermissions()
+        requestCallScreeningRole()
         refreshStatus()
     }
 
@@ -153,6 +154,18 @@ class MainActivity : AppCompatActivity() {
             Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
         ) ?: return false
         return enabledServices.contains(packageName)
+    }
+
+    /** Demande le rôle "filtrage d'appels" pour pouvoir rejeter les appels entrants. */
+    private fun requestCallScreeningRole() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        try {
+            val rm = getSystemService(android.app.role.RoleManager::class.java) ?: return
+            val role = android.app.role.RoleManager.ROLE_CALL_SCREENING
+            if (rm.isRoleAvailable(role) && !rm.isRoleHeld(role)) {
+                startActivityForResult(rm.createRequestRoleIntent(role), 201)
+            }
+        } catch (_: Exception) {}
     }
 
     private fun checkPermissions() {
