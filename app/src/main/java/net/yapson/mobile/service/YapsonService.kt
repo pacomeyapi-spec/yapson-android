@@ -212,7 +212,7 @@ class YapsonService : Service() {
 
         val amount: Int
         val isProbe: Boolean
-        if (!Prefs.autoProbeDone) {
+        if (!Prefs.autoProbeDone || Prefs.autoProbeSlot != cfg.simSlot) {
             amount = (cfg.probeAmount.coerceAtLeast(10) / 10) * 10
             isProbe = true
             log("⚡ Auto-dépôt: sonde initiale ${amount}F → ${cfg.destination}")
@@ -276,7 +276,7 @@ class YapsonService : Service() {
         }
         if (SmsReader.isSuccess(confirm.body)) {
             log("✅ Auto-dépôt: ${amount}F confirmé")
-            if (isProbe) { Prefs.autoProbeDone = true; Prefs.autoLastSmsTs = tsBefore } // la confirmation (plus récente) sera balayée au prochain cycle
+            if (isProbe) { Prefs.autoProbeDone = true; Prefs.autoProbeSlot = cfg.simSlot; Prefs.autoLastSmsTs = tsBefore } // la confirmation (plus récente) sera balayée au prochain cycle
         } else {
             log("❌ Auto-dépôt: échec — ${confirm.body.take(80)}")
             Ntfy.push(cfg.ntfyTopic, "Yapson auto-depot ECHEC", confirm.body) // raison reçue par SMS

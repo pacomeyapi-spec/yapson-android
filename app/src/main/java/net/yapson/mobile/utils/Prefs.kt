@@ -49,6 +49,11 @@ object Prefs {
         get() = _ctx?.let { prefs(it).getBoolean("auto_probe_done", false) } ?: false
         set(v) { _ctx?.let { prefs(it).edit().putBoolean("auto_probe_done", v).apply() } }
 
+    // Auto-dépôt : slot SIM pour lequel la sonde a été faite (la sonde se relance si on change de SIM)
+    var autoProbeSlot: Int
+        get() = _ctx?.let { prefs(it).getInt("auto_probe_slot", -1) } ?: -1
+        set(v) { _ctx?.let { prefs(it).edit().putInt("auto_probe_slot", v).apply() } }
+
     // Auto-dépôt : horodatage du dernier SMS +454 déjà traité (anti double-dépôt)
     var autoLastSmsTs: Long
         get() = _ctx?.let { prefs(it).getLong("auto_last_sms_ts", 0L) } ?: 0L
