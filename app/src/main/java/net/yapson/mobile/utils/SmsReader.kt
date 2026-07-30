@@ -57,6 +57,51 @@ object SmsReader {
         return raw.toLongOrNull()
     }
 
+    /**
+     * Tous les SMS d'un expéditeur reçus APRÈS [sinceTs], du plus ancien au plus récent.
+     * lastFrom() ne rend que le tout dernier : insuffisant pendant un dépôt, car un
+     * paiement client peut arriver juste après la confirmation et la masquer.
+     */
+    fun listFrom(ctx: Context, senderContains: String, subId: Int = -1, sinceTs: Long = 0L): List<Sms> {
+        val out = ArrayList<Sms>()
+        try {
+            val cols = arrayOf(Telephony.Sms.ADDRESS, Telephony.Sms.BODY, Telephony.Sms.DATE)
+            val sel: String?; val args: Array<String>?
+            if (subId >= 0) { sel = Telephony.Sms.SUBSCRIPTION_ID + "=?"; args = arrayOf(subId.toString()) }
+            else { sel = null; args = null }
+            ctx.contentResolver.query(
+                Telephony.Sms.Inbox.CONTENT_URI, cols, sel, args, Telephony.Sms.DATE + " ASC"
+            )?.use { c ->
+                val iA = c.getColumnIndex(Telephony.Sms.ADDRESS)
+                val iB = c.getColumnIndex(Telephony.Sms.BODY)
+                val iD = c.getColumnIndex(Telephony.Sms.DATE)
+                while (c.moveToNext()) {
+                    val addr = c.getString(iA) ?: ""
+                    val ts = c.getLong(iD)
+                    if (addr.contains(senderContains) && ts > sinceTs) out.add(Sms(c.getString(iB) ?: "", ts))
+                }
+            }
+        } catch (e: Exception) { /* boite SMS illisible : on rend ce qu'on a */ }
+        return out
+    }
+
+    /**
+     * Vrai si le SMS annonce un transfert REÇU d'un tiers — autrement dit un paiement
+     * client ("Transfert de 500.00F recu du 07XXXXXXXX"), et non l'issue d'une de nos
+     * opérations. Ces notifications tombent à n'importe quel moment, y compris pendant
+     * qu'un dépôt s'exécute : sans ce filtre elles étaient prises pour la confirmation
+     * du dépôt, ne contenaient évidemment aucun marqueur de succès, et déclenchaient
+     * une fausse alerte ECHEC.
+     *
+     * Volontairement ÉTROIT : on n'écarte que ce qu'on identifie avec certitude. Tout
+     * SMS non reconnu continue de suivre le chemin normal, pour ne jamais masquer un
+     * vrai échec.
+     */
+    fun isIncomingTransfer(body: String): Boolean {
+        val b = body.lowercase()
+        return Regex("re[çc]u\\s+d[eu]\\b").containsMatchIn(b)
+    }
+
     /** Vrai si le SMS annonce un transfert réussi. */
     fun isSuccess(body: String): Boolean {
         val b = body.lowercase()

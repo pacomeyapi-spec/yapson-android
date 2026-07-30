@@ -262,11 +262,22 @@ class YapsonService : Service() {
         }
 
         // Attendre le SMS +454 de confirmation (succès/échec + nouveau solde)
+        // On IGNORE les paiements clients qui arrivent pendant l'opération : plusieurs
+        // dépôts utilisateurs tombent souvent en pleine exécution de l'USSD, et le
+        // premier SMS venu était pris pour la confirmation → fausse alerte ECHEC.
+        // On balaie tous les SMS nouveaux (pas seulement le dernier) : la vraie
+        // confirmation peut être suivie d'un paiement qui la masquerait.
         var confirm: SmsReader.Sms? = null
+        var paiementsIgnores = 0
         val deadline = System.currentTimeMillis() + 90_000L
         while (System.currentTimeMillis() < deadline) {
-            val s = SmsReader.lastFrom(applicationContext, "454", subId)
-            if (s != null && s.ts > tsBefore) { confirm = s; break }
+            val nouveaux = SmsReader.listFrom(applicationContext, "454", subId, tsBefore)
+            val c = nouveaux.firstOrNull { !SmsReader.isIncomingTransfer(it.body) }
+            if (c != null) { confirm = c; break }
+            if (nouveaux.size > paiementsIgnores) {
+                paiementsIgnores = nouveaux.size
+                log("⏳ Auto-dépôt: $paiementsIgnores paiement(s) client pendant l'opération — ignoré(s)")
+            }
             delay(3000)
         }
         if (confirm == null) {
