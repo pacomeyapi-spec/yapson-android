@@ -59,6 +59,16 @@ object Prefs {
         get() = _ctx?.let { prefs(it).getInt("auto_probe_fails", 0) } ?: 0
         set(v) { _ctx?.let { prefs(it).edit().putInt("auto_probe_fails", v).apply() } }
 
+    // Auto-dépôt : instant de la dernière sonde envoyée (espacement en cas d'échecs répétés)
+    var autoLastProbeAt: Long
+        get() = _ctx?.let { prefs(it).getLong("auto_last_probe_at", 0L) } ?: 0L
+        set(v) { _ctx?.let { prefs(it).edit().putLong("auto_last_probe_at", v).apply() } }
+
+    // Auto-dépôt : l'alerte "sondes sans confirmation" a-t-elle déjà été envoyée ?
+    var autoProbeAlerted: Boolean
+        get() = _ctx?.let { prefs(it).getBoolean("auto_probe_alerted", false) } ?: false
+        set(v) { _ctx?.let { prefs(it).edit().putBoolean("auto_probe_alerted", v).apply() } }
+
     // Auto-dépôt : horodatage du dernier SMS +454 déjà traité (anti double-dépôt)
     var autoLastSmsTs: Long
         get() = _ctx?.let { prefs(it).getLong("auto_last_sms_ts", 0L) } ?: 0L
