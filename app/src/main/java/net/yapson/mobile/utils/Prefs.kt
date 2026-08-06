@@ -54,6 +54,11 @@ object Prefs {
         get() = _ctx?.let { prefs(it).getInt("auto_probe_slot", -1) } ?: -1
         set(v) { _ctx?.let { prefs(it).edit().putInt("auto_probe_slot", v).apply() } }
 
+    // Auto-dépôt : sondes consécutives restées sans confirmation SMS (garde-fou anti-gaspillage)
+    var autoProbeFails: Int
+        get() = _ctx?.let { prefs(it).getInt("auto_probe_fails", 0) } ?: 0
+        set(v) { _ctx?.let { prefs(it).edit().putInt("auto_probe_fails", v).apply() } }
+
     // Auto-dépôt : horodatage du dernier SMS +454 déjà traité (anti double-dépôt)
     var autoLastSmsTs: Long
         get() = _ctx?.let { prefs(it).getLong("auto_last_sms_ts", 0L) } ?: 0L

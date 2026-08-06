@@ -206,13 +206,25 @@ class YapsonService : Service() {
     private suspend fun runAutoDepot(cfg: AutoConfig) {
         // SIM choisie dans le dashboard : on lit le solde UNIQUEMENT sur cette SIM (subscriptionId),
         // sinon avec deux SIM du même opérateur on lirait le solde du mauvais compte.
-        val subId = SmsReader.subIdForSlot(applicationContext, cfg.simSlot)
+        val rawSubId = SmsReader.subIdForSlot(applicationContext, cfg.simSlot)
+        // Certains téléphones (Huawei/EMUI) ne remplissent pas SUBSCRIPTION_ID :
+        // on retombe alors sur le slot, puis sur une lecture non filtrée.
+        val subId = SmsReader.effectiveSubId(applicationContext, cfg.simSlot, rawSubId)
+        if (subId != rawSubId) log("ℹ️ SMS: SUBSCRIPTION_ID inexploitable (${rawSubId}) → lecture ${if (subId < 0) "non filtrée" else "par slot $subId"}")
         val latest = SmsReader.lastFrom(applicationContext, "454", subId)
         val tsBefore = latest?.ts ?: 0L
 
         val amount: Int
         val isProbe: Boolean
         if (!Prefs.autoProbeDone || Prefs.autoProbeSlot != cfg.simSlot) {
+            // GARDE-FOU : si la sonde échoue en boucle (SMS illisibles), on s'arrête au
+            // lieu de brûler 200 F et une transaction à chaque cycle.
+            if (Prefs.autoProbeFails >= 3) {
+                log("⛔ Auto-dépôt EN PAUSE: ${Prefs.autoProbeFails} sondes sans confirmation SMS")
+                Ntfy.push(cfg.ntfyTopic, "Yapson auto-depot EN PAUSE",
+                    "3 sondes envoyees sans SMS +454 lisible. Verifie l'autorisation SMS de l'app et que les SMS +454 arrivent bien. Auto-depot suspendu pour ne pas gaspiller (200F par essai).")
+                return
+            }
             amount = (cfg.probeAmount.coerceAtLeast(10) / 10) * 10
             isProbe = true
             log("⚡ Auto-dépôt: sonde initiale ${amount}F → ${cfg.destination}")
@@ -281,13 +293,15 @@ class YapsonService : Service() {
             delay(3000)
         }
         if (confirm == null) {
+            if (isProbe) Prefs.autoProbeFails = Prefs.autoProbeFails + 1
+            SmsReader.resetSubIdCache()   // re-détecte le mode de lecture au prochain essai
             log("⚠️ Auto-dépôt: pas de SMS +454 de confirmation (timeout)")
             Ntfy.push(cfg.ntfyTopic, "Yapson auto-depot", "Dépôt ${amount}F: aucun SMS +454 reçu (timeout 90s)")
             return
         }
         if (SmsReader.isSuccess(confirm.body)) {
             log("✅ Auto-dépôt: ${amount}F confirmé")
-            if (isProbe) { Prefs.autoProbeDone = true; Prefs.autoProbeSlot = cfg.simSlot; Prefs.autoLastSmsTs = tsBefore } // la confirmation (plus récente) sera balayée au prochain cycle
+            if (isProbe) { Prefs.autoProbeDone = true; Prefs.autoProbeSlot = cfg.simSlot; Prefs.autoLastSmsTs = tsBefore; Prefs.autoProbeFails = 0 } // la confirmation (plus récente) sera balayée au prochain cycle
         } else {
             log("❌ Auto-dépôt: échec — ${confirm.body.take(80)}")
             Ntfy.push(cfg.ntfyTopic, "Yapson auto-depot ECHEC", confirm.body) // raison reçue par SMS
