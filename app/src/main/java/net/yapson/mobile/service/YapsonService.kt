@@ -305,6 +305,10 @@ class YapsonService : Service() {
             if (isProbe) Prefs.autoProbeFails = Prefs.autoProbeFails + 1
             SmsReader.resetSubIdCache()   // re-détecte le mode de lecture au prochain essai
             log("⚠️ Auto-dépôt: pas de SMS +454 de confirmation (timeout)")
+            // Diagnostic : dit précisément si c'est le filtre SIM qui masque les SMS.
+            val diag = SmsReader.diagnostic(applicationContext, "454", rawSubId, cfg.simSlot)
+            log("🔎 $diag")
+            Ntfy.push(cfg.ntfyTopic, "Yapson diagnostic SMS", diag)
             Ntfy.push(cfg.ntfyTopic, "Yapson auto-depot", "Dépôt ${amount}F: aucun SMS +454 reçu (timeout 90s)")
             return
         }

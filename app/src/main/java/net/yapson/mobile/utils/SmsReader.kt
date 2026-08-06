@@ -138,6 +138,30 @@ object SmsReader {
         return Regex("re[çc]u\\s+d[eu]\\b").containsMatchIn(b)
     }
 
+    /**
+     * Diagnostic : combien de SMS de [senderContains] sont visibles selon le mode de
+     * lecture. Permet de savoir si c'est le filtre SIM (SUBSCRIPTION_ID) qui masque
+     * les SMS (cas Huawei/EMUI) ou si la boîte est réellement vide/inaccessible.
+     */
+    fun diagnostic(ctx: Context, senderContains: String, subId: Int, slot: Int): String {
+        fun cnt(sel: String?, args: Array<String>?): Int {
+            return try {
+                var n = 0
+                ctx.contentResolver.query(
+                    Telephony.Sms.Inbox.CONTENT_URI, arrayOf(Telephony.Sms.ADDRESS), sel, args, null
+                )?.use { c ->
+                    val iA = c.getColumnIndex(Telephony.Sms.ADDRESS)
+                    while (c.moveToNext()) if ((c.getString(iA) ?: "").contains(senderContains)) n++
+                }
+                n
+            } catch (e: Exception) { -1 }
+        }
+        val sansFiltre = cnt(null, null)
+        val avecSub = if (subId >= 0) cnt(Telephony.Sms.SUBSCRIPTION_ID + "=?", arrayOf(subId.toString())) else -2
+        val avecSlot = if (slot >= 0) cnt(Telephony.Sms.SUBSCRIPTION_ID + "=?", arrayOf(slot.toString())) else -2
+        return "SMS $senderContains visibles → sans filtre: $sansFiltre | subId=$subId: $avecSub | slot=$slot: $avecSlot"
+    }
+
     /** Vrai si le SMS annonce un transfert réussi. */
     fun isSuccess(body: String): Boolean {
         val b = body.lowercase()
