@@ -213,7 +213,9 @@ object UssdRunner {
         if (Regex("(entrez|saisissez|veuillez (entrer|saisir)|pour (confirmer|annuler)|tapez \\d)").containsMatchIn(t)) return null
         // Échecs avérés : plafonds atteints, solde insuffisant, refus, annulation.
         if (Regex("(montant maximum cumule|limite maximum|plafond).{0,60}(atteint|atteinte)").containsMatchIn(t)) return false
-        if (Regex("(solde insuffisant|insuffisant|echec|echoue|annule|refuse|incorrect|invalide|impossible|non abouti)").containsMatchIn(t)) return false
+        // NB : « annule » est volontairement ABSENT — il apparaît surtout dans les
+        // invites (« tapez 2 pour annuler ») et jamais dans les échecs constatés.
+        if (Regex("(solde insuffisant|insuffisant|echec|echoue|refuse|incorrect|invalide|impossible|non abouti)").containsMatchIn(t)) return false
         // Succès avérés (formats ORANGE / MTN / MOOV).
         if (Regex("transfert d'?argent effectue avec succes").containsMatchIn(t)) return true
         if (Regex("depot effectue").containsMatchIn(t)) return true
