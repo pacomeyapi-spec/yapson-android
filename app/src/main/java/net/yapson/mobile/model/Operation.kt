@@ -6,6 +6,7 @@ data class Operation(
     val id: String = "",
     val reference: String = "",
     val type: String = "",       // DEPOT ou RETRAIT
+    val productKind: String? = null,  // "VENTE"/"SOUSCRIPTION" (airtime) ou null
     val status: String = "",
     val operator: String = "",   // ORANGE, MTN, MOOV, WAVE
     val amount: Double = 0.0,

@@ -184,7 +184,8 @@ class YapsonService : Service() {
         // On attend la fin (succès / échec / timeout) avant de reprendre le poll.
         val result = withContext(Dispatchers.Main) {
             suspendCancellableCoroutine<UssdRunner.UssdResult> { cont ->
-                UssdRunner.runSteps(applicationContext, taken.id, steps, simSlot = taken.simSlot, opType = taken.type) { r ->
+                val logicalType = if (taken.productKind != null) "AIRTIME" else taken.type   // vente/souscription: valider comme un retrait
+                UssdRunner.runSteps(applicationContext, taken.id, steps, simSlot = taken.simSlot, opType = logicalType) { r ->
                     if (cont.isActive) cont.resume(r)
                 }
             }

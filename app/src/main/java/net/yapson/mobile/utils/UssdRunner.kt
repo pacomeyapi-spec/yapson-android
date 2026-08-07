@@ -246,7 +246,7 @@ object UssdRunner {
 
     /** Echec USSD explicite (sert aux RETRAITS uniquement). */
     private fun isExplicitFailure(t: String): Boolean {
-        return Regex("(solde insuffisant|insuffisant|echec|echoue|refuse|incorrect|invalide|impossible|non abouti|initiate not fund|not fund|montant maximum cumule|limite maximum|plafond)").containsMatchIn(nrm(t))
+        return Regex("(solde insuffisant|insuffisant|echec|echoue|refuse|incorrect|invalide|impossible|non abouti|non disponible|indisponible|initiate not fund|not fund|montant maximum cumule|limite maximum|plafond)").containsMatchIn(nrm(t))
     }
 
     private fun finish(s: Session, result: UssdResult) {
