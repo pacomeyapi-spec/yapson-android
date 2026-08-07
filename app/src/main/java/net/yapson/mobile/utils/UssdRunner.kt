@@ -168,6 +168,17 @@ object UssdRunner {
             }
         }
 
+        // Verdict final de l'opérateur : on conclut TOUT DE SUITE, même s'il restait
+        // des étapes à saisir (ex. plafond atteint annoncé en cours de séquence).
+        val verdict = terminalVerdict(promptText)
+        if (verdict != null) {
+            UssdLog.add(if (verdict) "🏁 Verdict opérateur : SUCCÈS" else "🛑 Verdict opérateur : ÉCHEC")
+            feed(null, false, true)
+            finish(s, UssdResult(s.operationId, verdict, s.transcript.toString(),
+                if (verdict) null else promptText.take(200)))
+            return
+        }
+
         if (hasInputField && s.inputs.isNotEmpty()) {
             val next = s.inputs.removeFirst()
             UssdLog.add("➡️ Saisie: '$next' (reste ${s.inputs.size})")
@@ -178,6 +189,33 @@ object UssdRunner {
             feed(null, false, true)
             finish(s, UssdResult(s.operationId, success, s.transcript.toString()))
         }
+    }
+
+    /** Normalisation (minuscules, sans accents) pour l'analyse des messages. */
+    private fun nrm(t: String): String =
+        java.text.Normalizer.normalize(t.lowercase(), java.text.Normalizer.Form.NFD)
+            .replace(Regex("\\p{Mn}+"), "").replace(Regex("\\s+"), " ").trim()
+
+    /**
+     * Verdict FINAL de l'opérateur : succès ou échec avéré. Dès qu'il apparaît,
+     * l'opération EST jouée — inutile de poursuivre la séquence ou d'attendre le
+     * timeout. C'est ce qui permet de connaître le statut d'un dépôt juste après
+     * l'USSD, sans attente.
+     * Retourne true (succès), false (échec) ou null (message non terminal).
+     */
+    fun terminalVerdict(text: String): Boolean? {
+        val t = nrm(text)
+        if (t.isEmpty()) return null
+        // Échecs avérés : plafonds atteints, solde insuffisant, refus, annulation.
+        if (Regex("(montant maximum cumule|limite maximum|plafond).{0,60}(atteint|atteinte)").containsMatchIn(t)) return false
+        if (Regex("(solde insuffisant|insuffisant|echec|echoue|annule|refuse|incorrect|invalide|impossible|non abouti)").containsMatchIn(t)) return false
+        // Succès avérés (formats ORANGE / MTN / MOOV).
+        if (Regex("transfert d'?argent effectue avec succes").containsMatchIn(t)) return true
+        if (Regex("depot effectue").containsMatchIn(t)) return true
+        if (Regex("depot de .{0,40}a ete effectue avec succes").containsMatchIn(t)) return true
+        if (Regex("vous avez envoye .{0,40}vers le").containsMatchIn(t)) return true
+        if (Regex("(effectue|effectuee) avec succes").containsMatchIn(t)) return true
+        return null
     }
 
     private fun finish(s: Session, result: UssdResult) {
