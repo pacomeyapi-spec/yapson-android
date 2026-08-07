@@ -170,7 +170,7 @@ object UssdRunner {
 
         // Verdict final de l'opérateur : on conclut TOUT DE SUITE, même s'il restait
         // des étapes à saisir (ex. plafond atteint annoncé en cours de séquence).
-        val verdict = terminalVerdict(promptText)
+        val verdict = terminalVerdict(promptText, hasInputField)
         if (verdict != null) {
             UssdLog.add(if (verdict) "🏁 Verdict opérateur : SUCCÈS" else "🛑 Verdict opérateur : ÉCHEC")
             feed(null, false, true)
@@ -184,7 +184,7 @@ object UssdRunner {
             UssdLog.add("➡️ Saisie: '$next' (reste ${s.inputs.size})")
             feed(next, true, false)
         } else {
-            val success = !containsAny(promptText, s.errorKeywords)
+            val success = isSuccessMessage(promptText)   // liste blanche, cf. terminalVerdict
             UssdLog.add("🏁 Fin de séquence (succès=$success)")
             feed(null, false, true)
             finish(s, UssdResult(s.operationId, success, s.transcript.toString()))
@@ -197,32 +197,41 @@ object UssdRunner {
             .replace(Regex("\\p{Mn}+"), "").replace(Regex("\\s+"), " ").trim()
 
     /**
-     * Verdict FINAL de l'opérateur : succès ou échec avéré. Dès qu'il apparaît,
-     * l'opération EST jouée — inutile de poursuivre la séquence ou d'attendre le
-     * timeout. C'est ce qui permet de connaître le statut d'un dépôt juste après
-     * l'USSD, sans attente.
-     * Retourne true (succès), false (échec) ou null (message non terminal).
+     * Le message est-il un SUCCÈS reconnu ? (formats relevés sur le terrain)
+     *   ORANGE dépôt     : « Dépot effectué Vous allez recevoir une confirmation par SMS »
+     *   ORANGE transfert : « Transfert d'argent effectué avec succès vers le X »
+     *   MTN dépôt        : « Votre Depot de X FCFA a ete effectue avec succes sur le compte du Y »
+     *   MOOV dépôt       : « Vous avez envoye X FCFA vers le Y … »
      */
-    fun terminalVerdict(text: String): Boolean? {
+    fun isSuccessMessage(text: String): Boolean {
         val t = nrm(text)
-        if (t.isEmpty()) return null
-        // Une INVITE qui demande une saisie n'est JAMAIS un verdict. Indispensable :
-        // l'invite Orange du code PIN se termine par « ... ou tapez 2 pour annuler »,
-        // et le mot « annuler » contient « annule » -> elle était prise pour un échec,
-        // la séquence était coupée avant la saisie du code et le dépôt marqué échoué.
-        if (Regex("(entrez|saisissez|veuillez (entrer|saisir)|pour (confirmer|annuler)|tapez \\d)").containsMatchIn(t)) return null
-        // Échecs avérés : plafonds atteints, solde insuffisant, refus, annulation.
-        if (Regex("(montant maximum cumule|limite maximum|plafond).{0,60}(atteint|atteinte)").containsMatchIn(t)) return false
-        // NB : « annule » est volontairement ABSENT — il apparaît surtout dans les
-        // invites (« tapez 2 pour annuler ») et jamais dans les échecs constatés.
-        if (Regex("(solde insuffisant|insuffisant|echec|echoue|refuse|incorrect|invalide|impossible|non abouti)").containsMatchIn(t)) return false
-        // Succès avérés (formats ORANGE / MTN / MOOV).
+        if (t.isEmpty()) return false
         if (Regex("transfert d'?argent effectue avec succes").containsMatchIn(t)) return true
         if (Regex("depot effectue").containsMatchIn(t)) return true
         if (Regex("depot de .{0,40}a ete effectue avec succes").containsMatchIn(t)) return true
         if (Regex("vous avez envoye .{0,40}vers le").containsMatchIn(t)) return true
-        if (Regex("(effectue|effectuee) avec succes").containsMatchIn(t)) return true
-        return null
+        if (Regex("(effectue|effectuee|envoye|transfere) avec succes").containsMatchIn(t)) return true
+        return false
+    }
+
+    /**
+     * Verdict FINAL de l'opérateur.
+     *
+     * Règle : sur un écran TERMINAL (plus aucun champ de saisie, l'opérateur a
+     * rendu sa réponse), le résultat est binaire — SUCCÈS si le message fait
+     * partie des formats de réussite connus, ÉCHEC dans TOUS les autres cas.
+     * C'est volontairement une liste blanche : les formulations d'échec sont
+     * innombrables (« initiate not fund », plafonds, solde insuffisant, codes
+     * d'erreur…) et une liste noire en oublierait toujours.
+     *
+     * Tant qu'un champ de saisie est présent, il s'agit d'un menu ou d'une invite :
+     * jamais un verdict, la séquence se poursuit.
+     */
+    fun terminalVerdict(text: String, hasInputField: Boolean): Boolean? {
+        if (hasInputField) return null          // menu / invite -> on continue
+        val t = nrm(text)
+        if (t.isEmpty()) return null
+        return isSuccessMessage(t)              // terminal : succès connu, sinon échec
     }
 
     private fun finish(s: Session, result: UssdResult) {
