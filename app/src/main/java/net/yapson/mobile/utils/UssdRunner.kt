@@ -206,6 +206,11 @@ object UssdRunner {
     fun terminalVerdict(text: String): Boolean? {
         val t = nrm(text)
         if (t.isEmpty()) return null
+        // Une INVITE qui demande une saisie n'est JAMAIS un verdict. Indispensable :
+        // l'invite Orange du code PIN se termine par « ... ou tapez 2 pour annuler »,
+        // et le mot « annuler » contient « annule » -> elle était prise pour un échec,
+        // la séquence était coupée avant la saisie du code et le dépôt marqué échoué.
+        if (Regex("(entrez|saisissez|veuillez (entrer|saisir)|pour (confirmer|annuler)|tapez \\d)").containsMatchIn(t)) return null
         // Échecs avérés : plafonds atteints, solde insuffisant, refus, annulation.
         if (Regex("(montant maximum cumule|limite maximum|plafond).{0,60}(atteint|atteinte)").containsMatchIn(t)) return false
         if (Regex("(solde insuffisant|insuffisant|echec|echoue|annule|refuse|incorrect|invalide|impossible|non abouti)").containsMatchIn(t)) return false
