@@ -69,6 +69,11 @@ object Prefs {
         get() = _ctx?.let { prefs(it).getBoolean("auto_probe_alerted", false) } ?: false
         set(v) { _ctx?.let { prefs(it).edit().putBoolean("auto_probe_alerted", v).apply() } }
 
+    // Rapports d'opérations non transmis (JSON), rejoués à chaque cycle
+    var pendingReports: String
+        get() = _ctx?.let { prefs(it).getString("pending_reports", "") } ?: ""
+        set(v) { _ctx?.let { prefs(it).edit().putString("pending_reports", v).apply() } }
+
     // Auto-dépôt : horodatage du dernier SMS +454 déjà traité (anti double-dépôt)
     var autoLastSmsTs: Long
         get() = _ctx?.let { prefs(it).getLong("auto_last_sms_ts", 0L) } ?: 0L

@@ -4,6 +4,7 @@ import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import net.yapson.mobile.model.Operation
+import net.yapson.mobile.utils.Prefs
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -115,26 +116,70 @@ object ApiClient {
     }
 
     // ─── Remonter le résultat d'une opération USSD ──────────────────
-    fun report(operationId: String, success: Boolean, finalText: String, error: String?, operatorRef: String? = null): Boolean {
+    /** Envoi brut d'un rapport déjà sérialisé. */
+    private fun postReport(json: String): Boolean {
         return try {
-            val payload = mapOf(
-                "operationId" to operationId,
-                "success" to success,
-                "finalText" to finalText,
-                "error" to (error ?: ""),
-                "operatorRef" to (operatorRef ?: ""),
-                "reportedAt" to System.currentTimeMillis()
-            )
             val req = Request.Builder()
                 .url("$baseUrl/api/android/report")
                 .header("x-device-token", deviceToken)
-                .post(gson.toJson(payload).toRequestBody(JSON))
+                .post(json.toRequestBody(JSON))
                 .build()
             client.newCall(req).execute().use { it.isSuccessful }
         } catch (e: Exception) {
             Log.e(TAG, "report error: ${e.message}")
             false
         }
+    }
+
+    /**
+     * Rapporte le résultat d'une opération. Le verdict USSD est la SEULE source de
+     * vérité pour un dépôt : s'il n'arrive pas au serveur, l'opération reste bloquée
+     * « en cours » puis expire. On réessaie donc plusieurs fois, et en dernier
+     * recours on met le rapport dans une file persistante rejouée à chaque cycle.
+     */
+    fun report(operationId: String, success: Boolean, finalText: String, error: String?, operatorRef: String? = null): Boolean {
+        val payload = mapOf(
+            "operationId" to operationId,
+            "success" to success,
+            "finalText" to finalText,
+            "error" to (error ?: ""),
+            "operatorRef" to (operatorRef ?: ""),
+            "reportedAt" to System.currentTimeMillis()
+        )
+        val json = gson.toJson(payload)
+        val delais = longArrayOf(0, 1500, 4000, 8000)
+        for (d in delais) {
+            if (d > 0) try { Thread.sleep(d) } catch (e: InterruptedException) { }
+            if (postReport(json)) return true
+        }
+        queueReport(json)                       // réseau indisponible : on garde le verdict
+        return false
+    }
+
+    /** Ajoute un rapport non transmis à la file persistante (max 50). */
+    private fun queueReport(json: String) {
+        try {
+            val cur = Prefs.pendingReports
+            val arr = if (cur.isBlank()) mutableListOf<String>() else gson.fromJson(cur, Array<String>::class.java).toMutableList()
+            arr.add(json)
+            while (arr.size > 50) arr.removeAt(0)
+            Prefs.pendingReports = gson.toJson(arr)
+            Log.w(TAG, "rapport mis en file (${arr.size} en attente)")
+        } catch (e: Exception) { Log.e(TAG, "queueReport: ${e.message}") }
+    }
+
+    /** Rejoue les rapports en attente. Retourne le nombre transmis. */
+    fun flushPendingReports(): Int {
+        val cur = Prefs.pendingReports
+        if (cur.isBlank()) return 0
+        return try {
+            val arr = gson.fromJson(cur, Array<String>::class.java).toMutableList()
+            var envoyes = 0
+            val restants = mutableListOf<String>()
+            for (j in arr) { if (postReport(j)) envoyes++ else restants.add(j) }
+            Prefs.pendingReports = if (restants.isEmpty()) "" else gson.toJson(restants)
+            envoyes
+        } catch (e: Exception) { Log.e(TAG, "flush: ${e.message}"); 0 }
     }
 
     // ─── Auto-dépôt : lire la config ────────────────────────────────

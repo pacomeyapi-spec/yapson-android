@@ -102,6 +102,11 @@ class YapsonService : Service() {
                         ApiClient.heartbeat()
                     }
 
+                    // Rapports d'opérations restés en attente (réseau coupé au moment
+                    // du verdict USSD) : on les rejoue avant toute nouvelle opération.
+                    val rejoues = ApiClient.flushPendingReports()
+                    if (rejoues > 0) log("📤 $rejoues rapport(s) en attente transmis")
+
                     // Mode auto-dépôt : si activé côté dashboard, l'appareil dépose tout seul
                     // le solde lu dans le dernier SMS +454, en boucle (pas de poll d'opérations).
                     val auto = ApiClient.getAutoConfig()
