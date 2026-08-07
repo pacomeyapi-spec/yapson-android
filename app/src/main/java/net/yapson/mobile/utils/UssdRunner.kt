@@ -39,6 +39,7 @@ object UssdRunner {
         val operationId: String,
         val inputs: ArrayDeque<String>,
         val errorKeywords: List<String>,
+        val opType: String,                 // "DEPOT" ou "RETRAIT"
         val onFinish: (UssdResult) -> Unit
     ) {
         @Volatile var lastActivityAt: Long = System.currentTimeMillis()
@@ -93,6 +94,7 @@ object UssdRunner {
         steps: List<String>,
         simSlot: Int = 0,
         errorKeywords: List<String> = DEFAULT_ERROR_KEYWORDS,
+        opType: String = "DEPOT",
         onFinish: (UssdResult) -> Unit
     ) {
         if (isBusy()) {
@@ -113,7 +115,7 @@ object UssdRunner {
         val inputs = ArrayDeque<String>()
         for (i in 1 until clean.size) inputs.add(clean[i])
 
-        val s = Session(operationId, inputs, errorKeywords, onFinish)
+        val s = Session(operationId, inputs, errorKeywords, opType, onFinish)
         session = s
         lastCtx = ctx.applicationContext
         desiredSimSlot = simSlot
@@ -170,7 +172,7 @@ object UssdRunner {
 
         // Verdict final de l'opérateur : on conclut TOUT DE SUITE, même s'il restait
         // des étapes à saisir (ex. plafond atteint annoncé en cours de séquence).
-        val verdict = terminalVerdict(promptText, hasInputField)
+        val verdict = terminalVerdict(promptText, hasInputField, s.opType)
         if (verdict != null) {
             UssdLog.add(if (verdict) "🏁 Verdict opérateur : SUCCÈS" else "🛑 Verdict opérateur : ÉCHEC")
             feed(null, false, true)
@@ -184,7 +186,7 @@ object UssdRunner {
             UssdLog.add("➡️ Saisie: '$next' (reste ${s.inputs.size})")
             feed(next, true, false)
         } else {
-            val success = isSuccessMessage(promptText)   // liste blanche, cf. terminalVerdict
+            val success = if (s.opType == "DEPOT") isSuccessMessage(promptText) else !isExplicitFailure(promptText)
             UssdLog.add("🏁 Fin de séquence (succès=$success)")
             feed(null, false, true)
             finish(s, UssdResult(s.operationId, success, s.transcript.toString()))
@@ -227,11 +229,24 @@ object UssdRunner {
      * Tant qu'un champ de saisie est présent, il s'agit d'un menu ou d'une invite :
      * jamais un verdict, la séquence se poursuit.
      */
-    fun terminalVerdict(text: String, hasInputField: Boolean): Boolean? {
+    fun terminalVerdict(text: String, hasInputField: Boolean, opType: String): Boolean? {
         if (hasInputField) return null          // menu / invite -> on continue
         val t = nrm(text)
         if (t.isEmpty()) return null
-        return isSuccessMessage(t)              // terminal : succès connu, sinon échec
+        // RETRAIT : l'USSD ne fait qu'INITIER la demande (l'abonné doit approuver).
+        // On ne conclut donc PAS a l'echec sur liste blanche : seul un message
+        // d'echec EXPLICITE echoue ; sinon la demande est partie et c'est le SMS
+        // recu apres coup qui validera (ancienne logique, cote serveur).
+        if (opType != "DEPOT") {
+            if (isExplicitFailure(t)) return false
+            return true                          // demande initiee -> pas d'echec, on laisse le SMS confirmer
+        }
+        return isSuccessMessage(t)              // DEPOT : succes connu, sinon echec
+    }
+
+    /** Echec USSD explicite (sert aux RETRAITS uniquement). */
+    private fun isExplicitFailure(t: String): Boolean {
+        return Regex("(solde insuffisant|insuffisant|echec|echoue|refuse|incorrect|invalide|impossible|non abouti|initiate not fund|not fund|montant maximum cumule|limite maximum|plafond)").containsMatchIn(nrm(t))
     }
 
     private fun finish(s: Session, result: UssdResult) {

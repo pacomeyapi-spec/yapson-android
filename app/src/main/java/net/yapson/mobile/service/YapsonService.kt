@@ -184,7 +184,7 @@ class YapsonService : Service() {
         // On attend la fin (succès / échec / timeout) avant de reprendre le poll.
         val result = withContext(Dispatchers.Main) {
             suspendCancellableCoroutine<UssdRunner.UssdResult> { cont ->
-                UssdRunner.runSteps(applicationContext, taken.id, steps, simSlot = taken.simSlot) { r ->
+                UssdRunner.runSteps(applicationContext, taken.id, steps, simSlot = taken.simSlot, opType = taken.type) { r ->
                     if (cont.isActive) cont.resume(r)
                 }
             }
@@ -274,7 +274,7 @@ class YapsonService : Service() {
         Prefs.currentOperationId = op.id
         val result = withContext(Dispatchers.Main) {
             suspendCancellableCoroutine<UssdRunner.UssdResult> { cont ->
-                UssdRunner.runSteps(applicationContext, op.id, op.ussdSteps!!, simSlot = op.simSlot) { r ->
+                UssdRunner.runSteps(applicationContext, op.id, op.ussdSteps!!, simSlot = op.simSlot, opType = "DEPOT") { r ->
                     if (cont.isActive) cont.resume(r)
                 }
             }
